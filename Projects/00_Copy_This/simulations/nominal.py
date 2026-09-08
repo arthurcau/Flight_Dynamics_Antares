@@ -100,8 +100,8 @@ def main():
     # -------------------------------------------------------------------------
     # Results
     # -------------------------------------------------------------------------
-
-    print_flight_summary(flight)
+    # 5. Output Summary
+    print_flight_summary(flight, project_dir=PROJECT_DIR)
 
 
     return flight

@@ -95,15 +95,15 @@ launch:
 
   site:
 
-    name: null
+    name: "Sugarcane Launch Range"
     # Example:
     # "LASC Launch Site"
 
-    latitude: null             # deg
+    latitude: -21.89            # deg
 
-    longitude: null            # deg
+    longitude: -49.02           # deg
 
-    elevation: null            # m ASL
+    elevation: 420.0           # m ASL
 
 
     # -------------------------------------------------------------------------
@@ -122,11 +122,11 @@ launch:
     # OPTIONAL SITE INFORMATION
     # -------------------------------------------------------------------------
 
-    country: null
+    country: "Brazil"
 
-    state: null
+    state: "SP"
 
-    city: null
+    city: "Iacanga"
 
     site_identifier: null
 
@@ -163,10 +163,10 @@ launch:
 
   datetime:
 
-    date: null
+    date: "2027-09-03"
     # YYYY-MM-DD
 
-    time: null
+    time: "14:30:00"
     # HH:MM:SS
 
     timezone: "America/Sao_Paulo"
@@ -225,16 +225,16 @@ launch:
     # PHYSICAL LENGTH
     # -------------------------------------------------------------------------
 
-    length: null               # m
+    length: 6.0               # m
 
 
     # -------------------------------------------------------------------------
     # ORIENTATION
     # -------------------------------------------------------------------------
 
-    inclination_deg: 90.0
+    inclination_deg: 80.0
 
-    heading_deg: null
+    heading_deg: 0.0
 
 
     # -------------------------------------------------------------------------
