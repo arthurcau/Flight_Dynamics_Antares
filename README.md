@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-     <source media="(prefers-color-scheme: dark)" srcset="docs/Antares_Logo_white.png">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/Antares_Logo_white.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/Antares_Logo_black.png">
     <img alt="Antares Logo" src="docs/Antares_Logo_white.png">
   </picture>
@@ -9,10 +9,10 @@
 <br>
 
 [![Documentation Status](https://readthedocs.org/projects/rocketpyalpha/badge/?version=latest)](https://docs.rocketpy.org/en/latest/?badge=latest)
-[![PyPI](https://img.shields.io/pypi/v/rocketpy?color=g)](https://pypi.org/project/rocketpy/)
-![Conda Version](https://img.shields.io/conda/v/conda-forge/rocketpy?color=g)
+[![PyPI](https://img.shields.io/pypi/v/rocketpy.svg?color=g)](https://pypi.org/project/rocketpy/)
+[![Conda Version](https://img.shields.io/conda/v/conda-forge/rocketpy.svg?color=g)](https://anaconda.org/conda-forge/rocketpy)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Contributors](https://img.shields.io/github/contributors/arthurcau/Flight_Dynamics_Antares)](https://github.com/arthurcau/Flight_Dynamics_Antares/graphs/contributors)
+[![Contributors](https://img.shields.io/github/contributors/arthurcau/Flight_Dynamics_Antares.svg)](https://github.com/arthurcau/Flight_Dynamics_Antares/graphs/contributors)
 [![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=flat&logo=instagram&logoColor=white)](https://www.instagram.com/antaresunicamp)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/adm-foguetemodelismo-569a09294)
 
@@ -45,17 +45,17 @@ Built on Python and RocketPy. The architecture separates the simulation engine f
 
 Do not copy the simulation engine. To add a new vehicle:
 
-1. Copy the `Projects/00_Copy_This/` directory.
-2. Rename it to your vehicle's name (e.g., `Projects/My_Rocket/`).
+1. Copy the `projects/00_Copy_This/` directory.
+2. Rename it to your vehicle's name (e.g., `projects/My_Rocket/`).
 3. Replace the `null` values in `config/vehicle.yaml`, `recovery.yaml`, and `launch.yaml` with actual engineering data.
 4. Run `simulations/nominal.py` to execute the flight.
 
 ## Engineering Rules
 
 ### 1. Configuration & Data
-All physical parameters must reside in YAML files. Do not hard-code values in Python scripts. 
+All physical parameters must reside in YAML files. Do not hard-code values in Python scripts.
 
-If a parameter is unknown, leave it as `null`. The software is designed to fail explicitly when required data is missing. Do not invent arbitrary physical values just to make the simulation run. 
+If a parameter is unknown, leave it as `null`. The software is designed to fail explicitly when required data is missing. Do not invent arbitrary physical values just to make the simulation run.
 
 ### 2. Units
 The internal standard is strictly SI.
@@ -75,7 +75,7 @@ The longitudinal axis is defined as nose-to-tail:
 All longitudinal positions (CG, CP, fin placement, rail guides, motor mount) must follow this convention.
 
 ### 4. Software Verification
-A simulation that finishes without crashing is not necessarily physically correct. 
+A simulation that finishes without crashing is not necessarily physically correct.
 
 The canonical model relies on both automated testing and engineering review. Do not suppress exceptions or ignore fail-fast checks.
 
@@ -84,5 +84,4 @@ The canonical model relies on both automated testing and engineering review. Do 
 The repository uses `pytest`. Tests verify the shared `antares_fd` package and validate configurations.
 
 ```bash
-PYTHONPATH=Source python3 -m pytest Tests/
-```
+PYTHONPATH=source python3 -m pytest tests/
