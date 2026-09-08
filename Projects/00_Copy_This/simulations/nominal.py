@@ -9,7 +9,14 @@ All vehicle, motor, recovery, environment and launch parameters
 must come from the project's configuration files.
 """
 
+import sys
 from pathlib import Path
+
+# Ensures the core 'Source' package can be imported even if run via IDE play button
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SOURCE_DIR = PROJECT_ROOT / "Source"
+if str(SOURCE_DIR) not in sys.path:
+    sys.path.insert(0, str(SOURCE_DIR))
 
 from antares_fd.config import load_project_config
 from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
