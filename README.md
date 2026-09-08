@@ -2,6 +2,14 @@
 
 Canonical repository for flight simulation and dynamics at the Antares Rocket Design Team.
 
+Antares Foguetemodelismo is an extracurricular program at the University of Campinas (Unicamp) dedicated
+to competing in national and international aerospace challenges. Founded in 2014 within the School of Mechanical
+Engineering (FEM), the team initially focused on national competitions. In 2017, the group underwent a strategic
+transformation, refreshing its visual identity and shifting its focus toward high-performance rocketry. Composed of
+a multidisciplinary body of undergraduate students, the group places a high priority on technical excellence through
+scientific research and amateur rocket design in order to spark interest in the aerospace industry, and grow critical
+interpersonal skills including teamwork, leadership, and project management in addition to technical engineering.
+
 Built on Python and RocketPy. The architecture separates the simulation engine from rocket-specific data, allowing multiple vehicles to be simulated using the exact same validated code base.
 
 ## Architecture
