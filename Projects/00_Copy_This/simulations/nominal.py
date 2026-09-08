@@ -12,12 +12,8 @@ must come from the project's configuration files.
 from pathlib import Path
 
 from antares_fd.config import load_project_config
-from antares_fd.environment import build_environment
-from antares_fd.motor import build_motor
-from antares_fd.vehicle import build_vehicle
-from antares_fd.recovery import add_recovery_system
-from antares_fd.simulation import run_flight
-from antares_fd.results import print_flight_summary
+from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
+from antares_fd.simulation import run_flight, print_flight_summary
 
 
 # =============================================================================

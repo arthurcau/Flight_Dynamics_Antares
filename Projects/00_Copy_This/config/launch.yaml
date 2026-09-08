@@ -1,4 +1,3 @@
-```yaml
 # =============================================================================
 # ANTARES FLIGHT DYNAMICS
 # LAUNCH CONFIGURATION
@@ -566,4 +565,3 @@ launch:
       source: null
 
       reference: null
-```
