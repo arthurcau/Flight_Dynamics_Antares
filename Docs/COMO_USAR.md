@@ -36,13 +36,14 @@ Abra-os e preencha os dados físicos do seu foguete real.
 
 ## 4. Rodando a Simulação
 Com os dados preenchidos, basta pedir para o Python rodar o script principal do seu projeto. 
-No terminal, execute:
+Se estiver usando um terminal comum, ative o ambiente virtual antes:
 
 ```bash
+source .venv/bin/activate
 python3 Projects/Meu_Foguete/simulations/nominal.py
 ```
 
-*Nota: Graças à nossa arquitetura, você também pode simplesmente abrir o arquivo `nominal.py` na sua IDE (como o VS Code) e clicar no botão "Play".*
+*Nota: Graças à nossa arquitetura, se você usa IDE (VS Code, PyCharm), você pode simplesmente abrir o arquivo `nominal.py` e clicar no botão "Play", pois a IDE detecta o `.venv` automaticamente.*
 
 ---
 
