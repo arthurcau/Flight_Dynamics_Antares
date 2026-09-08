@@ -1,3 +1,21 @@
+<p align="center">
+  <picture>
+     <source media="(prefers-color-scheme: dark)" srcset="Docs/Antares_Logo_white.png">
+    <source media="(prefers-color-scheme: light)" srcset="Docs/Antares_Logo_black.png">
+    <img alt="RocketPy Logo" src="Docs/Antares_Logo_white.png">
+  </picture>
+</p>
+
+<br>
+
+[![Documentation Status](https://readthedocs.org/projects/rocketpyalpha/badge/?version=latest)](https://docs.rocketpy.org/en/latest/?badge=latest)
+[![PyPI](https://img.shields.io/pypi/v/rocketpy?color=g)](https://pypi.org/project/rocketpy/)
+![Conda Version](https://img.shields.io/conda/v/conda-forge/rocketpy?color=g)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Contributors](https://img.shields.io/github/contributors/arthurcau/Flight_Dynamics_Antares)](https://github.com/arthurcau/Flight_Dynamics_Antares/graphs/contributors).
+[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=flat&logo=instagram&logoColor=white)](https://www.instagram.com/antaresunicamp)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/adm-foguetemodelismo-569a09294)
+
 # Antares Flight Dynamics
 
 Canonical repository for flight simulation and dynamics at the Antares Rocket Design Team.
