@@ -1,0 +1,23 @@
+# Python environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Antares Flight Dynamics / RocketPy Outputs
+*.kml
+*_map.pdf
+data/

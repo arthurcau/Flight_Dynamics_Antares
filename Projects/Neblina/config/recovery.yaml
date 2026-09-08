@@ -1,0 +1,166 @@
+schema_version: '1.0'
+recovery:
+  enabled: true
+  name: Nominal Recovery System
+  revision: '0.1'
+  description: 'Nominal recovery configuration for this vehicle.
+
+    '
+  metadata:
+    author: null
+    reviewer: null
+    date_created: null
+    date_modified: null
+    source_document: null
+    notes: null
+  settings:
+    altitude_reference: AGL
+    default_sampling_rate: 100.0
+  devices:
+  - id: drogue
+    name: Drogue Parachute
+    enabled: true
+    type: parachute
+    aerodynamics:
+      method: cd_s
+      cd_s: 0.102
+      drag_coefficient: null
+      reference_area: null
+      geometry:
+        radius: null
+        height: null
+        porosity: null
+    trigger:
+      type: apogee
+      apogee:
+        enabled: true
+      altitude:
+        value: null
+        direction: descending
+      time:
+        value: null
+        reference: flight_start
+      custom:
+        function: null
+        parameters: {}
+      sil:
+        controller: null
+        function: null
+        reset_before_flight: true
+    sampling:
+      rate: 100.0
+    sensor_model:
+      pressure:
+        noise_enabled: false
+        bias: 0.0
+        standard_deviation: 0.0
+        time_correlation: 0.0
+        random_seed: null
+    deployment:
+      lag: 1.0
+    ejection_system:
+      type: null
+      channel: null
+      controller: null
+      initiator: null
+      redundancy: false
+      backup_channel: null
+    model_limits:
+      maximum_deployment_velocity: null
+      maximum_deployment_mach: null
+      maximum_opening_load: null
+      minimum_deployment_altitude: 0.0
+      maximum_deployment_altitude: null
+    provenance:
+      cd_s:
+        source: null
+        reference: null
+      deployment_lag:
+        source: null
+        reference: null
+  - id: main
+    name: Main Parachute
+    enabled: true
+    type: parachute
+    aerodynamics:
+      method: cd_s
+      cd_s: 4.339
+      drag_coefficient: null
+      reference_area: null
+      geometry:
+        radius: null
+        height: null
+        porosity: null
+    trigger:
+      type: altitude
+      apogee:
+        enabled: false
+      altitude:
+        value: 400.0
+        direction: descending
+      time:
+        value: null
+        reference: flight_start
+      custom:
+        function: null
+        parameters: {}
+      sil:
+        controller: null
+        function: null
+        reset_before_flight: true
+    sampling:
+      rate: 100.0
+    sensor_model:
+      pressure:
+        noise_enabled: false
+        bias: 0.0
+        standard_deviation: 0.0
+        time_correlation: 0.0
+        random_seed: null
+    deployment:
+      lag: 2.0
+    ejection_system:
+      type: null
+      channel: null
+      controller: null
+      initiator: null
+      redundancy: false
+      backup_channel: null
+    model_limits:
+      maximum_deployment_velocity: null
+      maximum_deployment_mach: null
+      maximum_opening_load: null
+      minimum_deployment_altitude: 0.0
+      maximum_deployment_altitude: null
+    provenance:
+      cd_s:
+        source: null
+        reference: null
+      deployment_lag:
+        source: null
+        reference: null
+  nominal_sequence:
+  - drogue
+  - main
+  sanity_limits:
+    drogue_deployment:
+      minimum_altitude: null
+      maximum_altitude: null
+      maximum_velocity: null
+      maximum_mach: null
+    main_deployment:
+      minimum_altitude: null
+      maximum_altitude: null
+      maximum_velocity: null
+    landing:
+      maximum_vertical_velocity: null
+      maximum_total_velocity: null
+  verification:
+    require_no_prelaunch_deployment: true
+    require_single_deployment_per_device: true
+    require_main_after_drogue: true
+    require_main_during_descent: true
+    require_finite_deployment_state: true
+    check_deployment_velocity_limits: true
+    check_deployment_altitude_limits: true
+    check_landing_velocity_limits: true
