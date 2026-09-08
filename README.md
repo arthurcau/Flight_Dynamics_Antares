@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-     <source media="(prefers-color-scheme: dark)" srcset="Docs/Antares_Logo_white.png">
-    <source media="(prefers-color-scheme: light)" srcset="Docs/Antares_Logo_black.png">
-    <img alt="RocketPy Logo" src="Docs/Antares_Logo_white.png">
+     <source media="(prefers-color-scheme: dark)" srcset="docs/Antares_Logo_white.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/Antares_Logo_black.png">
+    <img alt="Antares Logo" src="docs/Antares_Logo_white.png">
   </picture>
 </p>
 
