@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-     <source media="(prefers-color-scheme: dark)" srcset="Docs/Antares_Logo_white.png">
-    <source media="(prefers-color-scheme: light)" srcset="Docs/Antares_Logo_black.png">
-    <img alt="RocketPy Logo" src="Docs/Antares_Logo_white.png">
+     <source media="(prefers-color-scheme: dark)" srcset="docs/Antares_Logo_white.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/Antares_Logo_black.png">
+    <img alt="Antares Logo" src="docs/Antares_Logo_white.png">
   </picture>
 </p>
 
@@ -41,7 +41,7 @@ Built on Python and RocketPy. The architecture separates the simulation engine f
 
 ## Creating a New Rocket
 
-> 💡 **Novo na equipe?** Veja o [Guia Rápido Passo a Passo (COMO_USAR.md)](Docs/COMO_USAR.md).
+> 💡 **Novo na equipe?** Veja o [Guia Rápido Passo a Passo (COMO_USAR.md)](docs/COMO_USAR.md).
 
 Do not copy the simulation engine. To add a new vehicle:
 
