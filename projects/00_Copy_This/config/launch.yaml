@@ -1,0 +1,567 @@
+# =============================================================================
+# ANTARES FLIGHT DYNAMICS
+# LAUNCH CONFIGURATION
+# =============================================================================
+#
+# File:
+#   launch.yaml
+#
+# Purpose:
+#   Defines the nominal launch site, launch date/time, launch rail geometry
+#   and initial launch conditions.
+#
+# This file answers:
+#
+#   WHERE is the rocket launched?
+#   WHEN is the rocket launched?
+#   HOW is the rocket oriented at launch?
+#
+#
+# Environment / weather model:
+#   -> environment.yaml
+#
+# Vehicle properties:
+#   -> vehicle.yaml
+#
+# Numerical solver settings:
+#   -> simulation.yaml
+#
+#
+# Units:
+#
+#   length      -> m
+#   angle       -> deg
+#   velocity    -> m/s
+#   angular vel -> rad/s
+#
+# =============================================================================
+
+
+schema_version: "1.0"
+
+
+# =============================================================================
+# LAUNCH
+# =============================================================================
+
+launch:
+
+  name: "Nominal Launch"
+
+  revision: "0.1"
+
+  description: >
+    Nominal launch configuration.
+
+
+# =============================================================================
+# TRACEABILITY
+# =============================================================================
+
+  metadata:
+
+    author: null
+
+    reviewer: null
+
+    date_created: null
+    # YYYY-MM-DD
+
+    date_modified: null
+
+    source_document: null
+
+    notes: null
+
+
+# =============================================================================
+# LAUNCH SITE
+# =============================================================================
+#
+# Geographic coordinates use decimal degrees.
+#
+# Latitude:
+#   North -> positive
+#   South -> negative
+#
+# Longitude:
+#   East -> positive
+#   West -> negative
+#
+# Elevation:
+#   Height above mean sea level.
+#
+# =============================================================================
+
+  site:
+
+    name: "Sugarcane Launch Range"
+    # Example:
+    # "LASC Launch Site"
+
+    latitude: -21.9430528       # deg (21°56'34.99"S)
+
+    longitude: -48.9540861      # deg (48°57'14.71"W)
+
+    elevation: 420.0           # m ASL
+
+
+    # -------------------------------------------------------------------------
+    # GEODETIC REFERENCE
+    # -------------------------------------------------------------------------
+
+    datum: "SIRGAS2000"
+    # RocketPy supported examples:
+    # SIRGAS2000
+    # WGS84
+    # SAD69
+    # NAD83
+
+
+    # -------------------------------------------------------------------------
+    # OPTIONAL SITE INFORMATION
+    # -------------------------------------------------------------------------
+
+    country: "Brazil"
+
+    state: "SP"
+
+    city: "Iacanga"
+
+    site_identifier: null
+
+    coordinates_source: null
+    # surveyed
+    # GNSS
+    # Google Earth
+    # competition_data
+    # estimate
+
+    elevation_source: null
+    # surveyed
+    # GNSS
+    # DEM
+    # competition_data
+    # estimate
+
+
+# =============================================================================
+# LAUNCH DATE AND TIME
+# =============================================================================
+#
+# Date/time should represent the intended launch instant.
+#
+# The timezone shall always be explicitly defined.
+#
+# Example:
+#
+#   date: "2027-09-03"
+#   time: "14:30:00"
+#   timezone: "America/Sao_Paulo"
+#
+# =============================================================================
+
+  datetime:
+
+    date: "2027-09-03"
+    # YYYY-MM-DD
+
+    time: "14:30:00"
+    # HH:MM:SS
+
+    timezone: "America/Sao_Paulo"
+
+
+    # Used when the exact launch time is not yet known.
+    #
+    # planned
+    # estimated
+    # confirmed
+    status: "planned"
+
+
+# =============================================================================
+# LAUNCH RAIL
+# =============================================================================
+#
+# RocketPy convention:
+#
+# inclination:
+#
+#    90 deg -> vertical
+#     0 deg -> horizontal
+#
+#
+# heading:
+#
+#      0 deg -> North
+#     90 deg -> East
+#    180 deg -> South
+#    270 deg -> West
+#
+#
+# Example:
+#
+#            N (0°)
+#              |
+#              |
+#   W (270°) --+-- E (90°)
+#              |
+#              |
+#            S (180°)
+#
+# =============================================================================
+
+  rail:
+
+    type: "rail"
+    # rail
+    # tower
+    # rod
+    # other
+
+
+    # -------------------------------------------------------------------------
+    # PHYSICAL LENGTH
+    # -------------------------------------------------------------------------
+
+    length: 6.0               # m
+
+
+    # -------------------------------------------------------------------------
+    # ORIENTATION
+    # -------------------------------------------------------------------------
+
+    inclination_deg: 80.0
+
+    heading_deg: 0.0
+
+
+    # -------------------------------------------------------------------------
+    # POSITIONING
+    # -------------------------------------------------------------------------
+
+    base_clearance: 0.0        # m
+
+    # Distance between local ground and rail reference origin.
+    # Usually zero unless the rail begins above ground.
+
+
+    # -------------------------------------------------------------------------
+    # ALIGNMENT
+    # -------------------------------------------------------------------------
+
+    roll_angle_deg: 0.0
+
+    # Optional rotation of the vehicle around its longitudinal axis
+    # relative to the chosen launch reference.
+
+
+    # -------------------------------------------------------------------------
+    # RAIL CONDITION
+    # -------------------------------------------------------------------------
+
+    condition:
+
+      alignment_verified: null
+
+      length_verified: null
+
+      inclination_verified: null
+
+      heading_verified: null
+
+
+# =============================================================================
+# INITIAL CONDITIONS
+# =============================================================================
+#
+# For a standard rail launch, these values should normally remain zero.
+#
+# They exist for:
+#
+#   - special simulation cases
+#   - air launches
+#   - validation
+#   - restarted simulations
+#
+# For ordinary launches, the vehicle initial orientation is derived from
+# the launch rail.
+#
+# =============================================================================
+
+  initial_conditions:
+
+    position:
+
+      east: 0.0                # m
+      north: 0.0               # m
+      vertical: 0.0            # m relative to launch site
+
+
+    velocity:
+
+      east: 0.0                # m/s
+      north: 0.0               # m/s
+      vertical: 0.0            # m/s
+
+
+    angular_velocity:
+
+      roll: 0.0                # rad/s
+      pitch: 0.0               # rad/s
+      yaw: 0.0                 # rad/s
+
+
+# =============================================================================
+# IGNITION
+# =============================================================================
+
+  ignition:
+
+    time: 0.0                  # s relative to simulation start
+
+    ignition_delay: 0.0        # s
+
+    source: "nominal"
+    # nominal
+    # measured
+    # estimated
+
+
+# =============================================================================
+# LAUNCH CONSTRAINTS
+# =============================================================================
+#
+# These represent engineering / competition constraints.
+#
+# They may later be used by automated pre-flight checks.
+#
+# =============================================================================
+
+  constraints:
+
+    rail:
+
+      minimum_length: null      # m
+
+      maximum_length: null      # m
+
+      minimum_inclination_deg: null
+
+      maximum_inclination_deg: null
+
+
+    weather:
+
+      maximum_surface_wind: null        # m/s
+
+      maximum_wind_gust: null           # m/s
+
+      maximum_precipitation: null       # optional project convention
+
+
+    flight:
+
+      minimum_rail_exit_velocity: null  # m/s
+
+      minimum_rail_exit_stability: null # calibers
+
+      maximum_expected_apogee: null     # m AGL
+
+      minimum_expected_apogee: null     # m AGL
+
+
+# =============================================================================
+# EXPECTED LAUNCH BOUNDS
+# =============================================================================
+#
+# Broad sanity limits.
+#
+# These are NOT regression targets.
+# They exist to catch obvious configuration mistakes.
+#
+# =============================================================================
+
+  sanity_limits:
+
+    latitude:
+
+      minimum: -90.0
+      maximum: 90.0
+
+
+    longitude:
+
+      minimum: -180.0
+      maximum: 180.0
+
+
+    elevation:
+
+      minimum: -500.0           # m ASL
+      maximum: 9000.0           # m ASL
+
+
+    rail_length:
+
+      minimum: 0.1              # m
+      maximum: 30.0             # m
+
+
+    inclination:
+
+      minimum: 0.0              # deg
+      maximum: 90.0             # deg
+
+
+    heading:
+
+      minimum: 0.0              # deg
+      maximum: 360.0            # deg
+
+
+# =============================================================================
+# FLIGHT AREA
+# =============================================================================
+#
+# Optional.
+#
+# Intended for future dispersion / Monte Carlo / range-safety analysis.
+#
+# This does NOT affect the basic RocketPy Flight object directly.
+#
+# =============================================================================
+
+  flight_area:
+
+    enabled: false
+
+
+    # -------------------------------------------------------------------------
+    # ALLOWED IMPACT REGION
+    # -------------------------------------------------------------------------
+
+    allowed_area:
+
+      type: null
+      # polygon
+      # radius
+
+      center:
+
+        latitude: null
+
+        longitude: null
+
+
+      radius: null              # m
+
+
+      polygon: []
+
+      # Example:
+      #
+      # polygon:
+      #
+      #   - latitude: -21.0000
+      #     longitude: -49.0000
+      #
+      #   - latitude: -21.0010
+      #     longitude: -49.0020
+      #
+      #   - latitude: -21.0030
+      #     longitude: -49.0010
+
+
+    # -------------------------------------------------------------------------
+    # EXCLUSION AREAS
+    # -------------------------------------------------------------------------
+
+    exclusion_areas: []
+
+    # Example:
+    #
+    # exclusion_areas:
+    #
+    #   - name: "Spectator Area"
+    #
+    #     type: "radius"
+    #
+    #     center:
+    #       latitude: null
+    #       longitude: null
+    #
+    #     radius: null
+
+
+# =============================================================================
+# LAUNCH VERIFICATION
+# =============================================================================
+#
+# Defines checks that should later be implemented by the automated test suite.
+#
+# =============================================================================
+
+  verification:
+
+    require_valid_coordinates: true
+
+    require_launch_datetime: true
+
+    require_explicit_timezone: true
+
+    require_positive_rail_length: true
+
+    require_valid_inclination: true
+
+    require_valid_heading: true
+
+    require_rail_exit_velocity_check: true
+
+    require_rail_exit_stability_check: true
+
+    require_weather_limit_check: false
+
+    require_impact_area_check: false
+
+
+# =============================================================================
+# DATA PROVENANCE
+# =============================================================================
+
+  provenance:
+
+    coordinates:
+
+      source: null
+
+      reference: null
+
+
+    elevation:
+
+      source: null
+
+      reference: null
+
+
+    rail_length:
+
+      source: null
+
+      reference: null
+
+
+    rail_orientation:
+
+      source: null
+
+      reference: null
+
+
+    launch_datetime:
+
+      source: null
+
+      reference: null

@@ -1,0 +1,21 @@
+motor:
+  type: "solid"
+  thrust_source: "motors/motor.eng"
+  burn_time: 3.0
+  dry_mass: 1.5
+  dry_inertia:
+    - 0.125
+    - 0.125
+    - 0.002
+  center_of_dry_mass_position: 0.5
+  grains_center_of_mass_position: 0.5
+  grain_number: 4
+  grain_separation: 0.005
+  grain_density: 1700.0
+  grain_outer_radius: 0.033
+  grain_initial_inner_radius: 0.015
+  grain_initial_height: 0.12
+  nozzle_radius: 0.012
+  throat_radius: 0.008
+  interpolation_method: "linear"
+  coordinate_system_orientation: "nozzle_to_combustion_chamber"

@@ -1,0 +1,697 @@
+# =============================================================================
+# ANTARES FLIGHT DYNAMICS
+# RECOVERY SYSTEM CONFIGURATION
+# =============================================================================
+#
+# File:
+#   recovery.yaml
+#
+# Purpose:
+#   Defines the nominal recovery system used by the flight simulation:
+#
+#       - recovery devices
+#       - parachute aerodynamic properties
+#       - deployment logic
+#       - deployment delays
+#       - sensor / trigger behavior
+#       - ejection-system metadata
+#
+# This file describes the NOMINAL recovery configuration.
+#
+# Recovery failure cases and Monte Carlo uncertainties should NOT be defined
+# here. They belong in dedicated uncertainty / failure-case configurations.
+#
+#
+# Units:
+#
+#   length        -> m
+#   area          -> m²
+#   CdS           -> m²
+#   time          -> s
+#   altitude      -> m AGL
+#   pressure      -> Pa
+#   frequency     -> Hz
+#
+# =============================================================================
+
+
+schema_version: "1.0"
+
+
+# =============================================================================
+# RECOVERY SYSTEM
+# =============================================================================
+
+recovery:
+
+  enabled: true
+
+
+# =============================================================================
+# IDENTIFICATION
+# =============================================================================
+
+  name: "Nominal Recovery System"
+
+  revision: "0.1"
+
+  description: >
+    Nominal recovery configuration for this vehicle.
+
+
+# =============================================================================
+# TRACEABILITY
+# =============================================================================
+
+  metadata:
+
+    author: null
+
+    reviewer: null
+
+    date_created: null
+    # YYYY-MM-DD
+
+    date_modified: null
+
+    source_document: null
+
+    notes: null
+
+
+# =============================================================================
+# GENERAL SETTINGS
+# =============================================================================
+
+  settings:
+
+    # Reference used for altitude-based deployment conditions.
+    altitude_reference: "AGL"
+
+    # All trigger altitude values shall therefore represent height
+    # above local ground level.
+    #
+    # RocketPy altitude triggers use height above ground level.
+
+    default_sampling_rate: 100.0       # Hz
+
+    # When using flight-computer/SIL logic, this should normally match
+    # the actual avionics execution frequency.
+    #
+    # Exact discrete trigger timing may additionally require
+    # time_overshoot = false in simulation.yaml.
+
+
+# =============================================================================
+# RECOVERY DEVICES
+# =============================================================================
+#
+# Every independently deployable aerodynamic device is listed here.
+#
+# Typical dual-deployment configuration:
+#
+#       Drogue -> Apogee
+#       Main   -> Altitude during descent
+#
+# =============================================================================
+
+  devices:
+
+
+    # =========================================================================
+    # DROGUE PARACHUTE
+    # =========================================================================
+
+    - id: "drogue"
+
+      name: "Drogue Parachute"
+
+      enabled: true
+
+      type: "parachute"
+
+
+      # -----------------------------------------------------------------------
+      # AERODYNAMIC MODEL
+      # -----------------------------------------------------------------------
+
+      aerodynamics:
+
+        # Recommended canonical input.
+        #
+        # RocketPy directly uses CdS.
+        #
+        # If measured experimentally, use:
+        #
+        #   method: "cd_s"
+        #
+        # and provide cd_s directly.
+
+        method: "cd_s"
+        # cd_s
+        # cd_and_area
+
+
+        # Drag coefficient × reference area.
+        cd_s: 1.5                       # m²
+
+
+        # Only required when method = cd_and_area.
+        drag_coefficient: null
+
+        reference_area: null             # m²
+
+
+        # -------------------------------------------------------------
+        # DEPLOYED GEOMETRY
+        # -------------------------------------------------------------
+        #
+        # Optional.
+        #
+        # Used when a more detailed RocketPy parachute model is desired,
+        # including added-mass effects.
+        #
+
+        geometry:
+
+          radius: null                   # m
+
+          height: null                   # m
+
+          porosity: null
+          # dimensionless, 0 <= porosity <= 1
+
+
+      # -----------------------------------------------------------------------
+      # DEPLOYMENT TRIGGER
+      # -----------------------------------------------------------------------
+
+      trigger:
+
+        type: "apogee"
+
+        # Supported project trigger types:
+        #
+        # apogee
+        # altitude
+        # time
+        # custom
+        # sil
+
+
+        # -------------------------------------------------------------
+        # APOGEE TRIGGER
+        # -------------------------------------------------------------
+
+        apogee:
+
+          enabled: true
+
+
+        # -------------------------------------------------------------
+        # ALTITUDE TRIGGER
+        # -------------------------------------------------------------
+        #
+        # Used only when type = altitude.
+        #
+
+        altitude:
+
+          value: null                    # m AGL
+
+          direction: "descending"
+          # descending
+          # ascending
+          #
+          # Canonical recovery deployments should normally use descending.
+
+
+        # -------------------------------------------------------------
+        # TIME TRIGGER
+        # -------------------------------------------------------------
+        #
+        # Used only when type = time.
+        #
+
+        time:
+
+          value: null                    # s
+
+          reference: "flight_start"
+          # flight_start
+          # burnout
+
+
+        # -------------------------------------------------------------
+        # CUSTOM SOFTWARE TRIGGER
+        # -------------------------------------------------------------
+        #
+        # Used for Antares-developed deployment logic.
+        #
+
+        custom:
+
+          function: null
+          # Example:
+          # "antares_fd.recovery.triggers.drogue_trigger"
+
+          parameters: {}
+
+
+        # -------------------------------------------------------------
+        # SOFTWARE-IN-THE-LOOP TRIGGER
+        # -------------------------------------------------------------
+
+        sil:
+
+          controller: null
+
+          function: null
+
+          reset_before_flight: true
+
+
+      # -----------------------------------------------------------------------
+      # SAMPLING
+      # -----------------------------------------------------------------------
+
+      sampling:
+
+        rate: 100.0                      # Hz
+
+
+      # -----------------------------------------------------------------------
+      # SENSOR MODEL
+      # -----------------------------------------------------------------------
+      #
+      # RocketPy can add noise to the PRESSURE signal evaluated by the
+      # parachute trigger.
+      #
+      # noise = (bias, standard deviation, time correlation)
+      #
+
+      sensor_model:
+
+        pressure:
+
+          noise_enabled: false
+
+          bias: 0.0                      # Pa
+
+          standard_deviation: 0.0        # Pa
+
+          time_correlation: 0.0          # s
+
+          random_seed: null
+
+
+      # -----------------------------------------------------------------------
+      # DEPLOYMENT DELAY
+      # -----------------------------------------------------------------------
+      #
+      # Time between trigger command and the parachute being considered
+      # fully deployed by the flight model.
+      #
+
+      deployment:
+
+        lag: 1.0                        # s
+
+        # This value should represent the effective system delay:
+        #
+        # detection
+        #   +
+        # firing
+        #   +
+        # ejection
+        #   +
+        # extraction
+        #   +
+        # canopy inflation
+        #
+        # according to the modeling assumption adopted by the team.
+
+
+      # -----------------------------------------------------------------------
+      # EJECTION SYSTEM
+      # -----------------------------------------------------------------------
+      #
+      # Primarily engineering metadata.
+      #
+      # RocketPy does not need most of these values directly, but keeping
+      # them associated with the recovery configuration improves traceability.
+      #
+
+      ejection_system:
+
+        type: null
+        # pyrotechnic
+        # co2
+        # pneumatic
+        # spring
+        # mechanical
+        # other
+
+        channel: null
+
+        controller: null
+
+        initiator: null
+
+        redundancy: false
+
+        backup_channel: null
+
+
+      # -----------------------------------------------------------------------
+      # MODEL LIMITS
+      # -----------------------------------------------------------------------
+
+      model_limits:
+
+        maximum_deployment_velocity: null      # m/s
+
+        maximum_deployment_mach: null
+
+        maximum_opening_load: null             # N
+
+        minimum_deployment_altitude: 0.0        # m AGL
+
+        maximum_deployment_altitude: null       # m AGL
+
+
+      # -----------------------------------------------------------------------
+      # DATA PROVENANCE
+      # -----------------------------------------------------------------------
+
+      provenance:
+
+        cd_s:
+
+          source: null
+          # drop_test
+          # flight_test
+          # manufacturer
+          # analytical
+          # literature
+          # estimate
+
+          reference: null
+
+
+        deployment_lag:
+
+          source: null
+          # ground_test
+          # flight_test
+          # estimate
+
+          reference: null
+
+
+
+    # =========================================================================
+    # MAIN PARACHUTE
+    # =========================================================================
+
+    - id: "main"
+
+      name: "Main Parachute"
+
+      enabled: true
+
+      type: "parachute"
+
+
+      # -----------------------------------------------------------------------
+      # AERODYNAMIC MODEL
+      # -----------------------------------------------------------------------
+
+      aerodynamics:
+
+        method: "cd_s"
+
+        cd_s: 4.5                       # m²
+
+        drag_coefficient: null
+
+        reference_area: null             # m²
+
+
+        geometry:
+
+          radius: null                   # m
+
+          height: null                   # m
+
+          porosity: null
+
+
+      # -----------------------------------------------------------------------
+      # DEPLOYMENT TRIGGER
+      # -----------------------------------------------------------------------
+
+      trigger:
+
+        type: "altitude"
+
+
+        apogee:
+
+          enabled: false
+
+
+        altitude:
+
+          value: 400.0                    # m AGL
+
+          direction: "descending"
+
+
+        time:
+
+          value: null                    # s
+
+          reference: "flight_start"
+
+
+        custom:
+
+          function: null
+
+          parameters: {}
+
+
+        sil:
+
+          controller: null
+
+          function: null
+
+          reset_before_flight: true
+
+
+      # -----------------------------------------------------------------------
+      # SAMPLING
+      # -----------------------------------------------------------------------
+
+      sampling:
+
+        rate: 100.0                      # Hz
+
+
+      # -----------------------------------------------------------------------
+      # SENSOR MODEL
+      # -----------------------------------------------------------------------
+
+      sensor_model:
+
+        pressure:
+
+          noise_enabled: false
+
+          bias: 0.0                      # Pa
+
+          standard_deviation: 0.0        # Pa
+
+          time_correlation: 0.0          # s
+
+          random_seed: null
+
+
+      # -----------------------------------------------------------------------
+      # DEPLOYMENT
+      # -----------------------------------------------------------------------
+
+      deployment:
+
+        lag: 1.5                        # s
+
+
+      # -----------------------------------------------------------------------
+      # EJECTION SYSTEM
+      # -----------------------------------------------------------------------
+
+      ejection_system:
+
+        type: null
+
+        channel: null
+
+        controller: null
+
+        initiator: null
+
+        redundancy: false
+
+        backup_channel: null
+
+
+      # -----------------------------------------------------------------------
+      # MODEL LIMITS
+      # -----------------------------------------------------------------------
+
+      model_limits:
+
+        maximum_deployment_velocity: null      # m/s
+
+        maximum_deployment_mach: null
+
+        maximum_opening_load: null             # N
+
+        minimum_deployment_altitude: 0.0        # m AGL
+
+        maximum_deployment_altitude: null       # m AGL
+
+
+      # -----------------------------------------------------------------------
+      # DATA PROVENANCE
+      # -----------------------------------------------------------------------
+
+      provenance:
+
+        cd_s:
+
+          source: null
+
+          reference: null
+
+
+        deployment_lag:
+
+          source: null
+
+          reference: null
+
+
+# =============================================================================
+# RECOVERY SEQUENCE
+# =============================================================================
+#
+# Defines the expected NOMINAL order of recovery events.
+#
+# Primarily used for documentation and automatic sanity tests.
+#
+# =============================================================================
+
+  nominal_sequence:
+
+    - "drogue"
+    - "main"
+
+
+# =============================================================================
+# NOMINAL RECOVERY REQUIREMENTS
+# =============================================================================
+#
+# Broad engineering limits.
+#
+# These are NOT regression targets.
+# Their purpose is to catch obviously unsafe or incorrectly configured cases.
+#
+# =============================================================================
+
+  sanity_limits:
+
+    drogue_deployment:
+
+      minimum_altitude: null            # m AGL
+      maximum_altitude: null            # m AGL
+
+      maximum_velocity: null            # m/s
+
+      maximum_mach: null
+
+
+    main_deployment:
+
+      minimum_altitude: null            # m AGL
+      maximum_altitude: null            # m AGL
+
+      maximum_velocity: null            # m/s
+
+
+    landing:
+
+      maximum_vertical_velocity: null   # m/s
+
+      maximum_total_velocity: null      # m/s
+
+
+# =============================================================================
+# RECOVERY TEST REQUIREMENTS
+# =============================================================================
+#
+# These fields describe what the automated test suite should verify.
+# They DO NOT implement the tests themselves.
+#
+# =============================================================================
+
+  verification:
+
+    require_no_prelaunch_deployment: true
+
+    require_single_deployment_per_device: true
+
+    require_main_after_drogue: true
+
+    require_main_during_descent: true
+
+    require_finite_deployment_state: true
+
+    check_deployment_velocity_limits: true
+
+    check_deployment_altitude_limits: true
+
+    check_landing_velocity_limits: true
+
+
+# =============================================================================
+# FAILURE CASES
+# =============================================================================
+#
+# Failure cases are intentionally NOT defined in the nominal configuration.
+#
+# Examples that should later be evaluated separately:
+#
+#   - drogue fails to deploy
+#   - main fails to deploy
+#   - premature drogue deployment
+#   - premature main deployment
+#   - late main deployment
+#   - incorrect barometric altitude
+#   - failed ejection channel
+#   - excessive deployment lag
+#   - incorrect CdS
+#   - partial canopy inflation
+#   - recovery line failure
+#
+# These belong in:
+#
+#   monte_carlo.yaml
+#
+# and/or:
+#
+#   failure_cases/
+#
+# =============================================================================
