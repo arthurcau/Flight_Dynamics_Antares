@@ -41,7 +41,7 @@ Built on Python and RocketPy. The architecture separates the simulation engine f
 
 ## Creating a New Rocket
 
-> 💡 **Novo na equipe?** Veja o [Guia Rápido Passo a Passo (COMO_USAR.md)](Docs/COMO_USAR.md).
+> 💡 **Novo na equipe?** Veja o [Guia Rápido Passo a Passo (COMO_USAR.md)](docs/COMO_USAR.md).
 
 Do not copy the simulation engine. To add a new vehicle:
 
