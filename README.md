@@ -12,7 +12,7 @@
 [![PyPI](https://img.shields.io/pypi/v/rocketpy?color=g)](https://pypi.org/project/rocketpy/)
 ![Conda Version](https://img.shields.io/conda/v/conda-forge/rocketpy?color=g)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Contributors](https://img.shields.io/github/contributors/arthurcau/Flight_Dynamics_Antares)](https://github.com/arthurcau/Flight_Dynamics_Antares/graphs/contributors).
+[![Contributors](https://img.shields.io/github/contributors/arthurcau/Flight_Dynamics_Antares)](https://github.com/arthurcau/Flight_Dynamics_Antares/graphs/contributors)
 [![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=flat&logo=instagram&logoColor=white)](https://www.instagram.com/antaresunicamp)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/adm-foguetemodelismo-569a09294)
 
