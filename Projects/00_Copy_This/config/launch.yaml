@@ -99,9 +99,9 @@ launch:
     # Example:
     # "LASC Launch Site"
 
-    latitude: -21.89            # deg
+    latitude: -21.9430528       # deg (21°56'34.99"S)
 
-    longitude: -49.02           # deg
+    longitude: -48.9540861      # deg (48°57'14.71"W)
 
     elevation: 420.0           # m ASL
 

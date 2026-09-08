@@ -1,6 +1,6 @@
 """
 ANTARES FLIGHT DYNAMICS
-Main at Apogee Flight Simulation
+Separation at Main Opening Simulation
 """
 import sys
 from pathlib import Path
@@ -20,14 +20,18 @@ def main():
     # 1. Load configuration
     config = load_project_config(PROJECT_DIR)
     
-    # 2. SCENARIO OVERRIDES: Disable drogue and set main trigger to apogee
-    for device in config.recovery.get("devices", []):
-        if device.get("id") == "drogue":
-            device["enabled"] = False
-        elif device.get("id") == "main":
-            device["trigger"] = {"type": "apogee"}
-            device["name"] = "Main Parachute (At Apogee)"
-            
+    # 2. SCENARIO OVERRIDES: 
+    # For this simplified scenario, we simulate the booster section's descent 
+    # by subtracting the mass of the separated forward section (e.g., nosecone).
+    
+    # Assume 2.0 kg is separated at main parachute deployment
+    separated_mass = 2.0 
+    original_mass = config.vehicle["mass_properties"]["mass_without_motor"]
+    
+    if original_mass and original_mass > separated_mass:
+        print(f"Modifying vehicle mass to simulate separation. Original: {original_mass} kg, New: {original_mass - separated_mass} kg")
+        config.vehicle["mass_properties"]["mass_without_motor"] = original_mass - separated_mass
+
     # 3. Execute scenario
     flight = execute_scenario(config, PROJECT_DIR)
     
