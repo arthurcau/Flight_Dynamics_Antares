@@ -33,8 +33,8 @@ Built on Python and RocketPy. The architecture separates the simulation engine f
 ## Architecture
 
 - `source/`: Reusable software. Defines *how* we simulate. Contains the `antares_fd` core package (builders, solvers, utilities).
-- `srojects/`: Vehicle data. Defines *what* we simulate. Contains YAML configurations, aerodynamic tables, and motor files for specific rockets (e.g., `Neblina_1`, `Andorinha`).
-- `sests/`: Software verification. Unit tests, physical sanity checks, and regressions.
+- `projects/`: Vehicle data. Defines *what* we simulate. Contains YAML configurations, aerodynamic tables, and motor files for specific rockets (e.g., `Neblina_1`, `Andorinha`).
+- `tests/`: Software verification. Unit tests, physical sanity checks, and regressions.
 - `docs/`: Technical documentation and engineering rationale.
 - `scripts/`: Automation and execution utilities.
 - `MAGI/`: Specialized tooling.
