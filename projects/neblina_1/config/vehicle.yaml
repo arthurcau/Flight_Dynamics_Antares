@@ -1,0 +1,161 @@
+schema_version: '1.0'
+vehicle:
+  name: COPY_THIS
+  project: null
+  revision: '0.1'
+  description: 'Template vehicle configuration.
+
+    '
+  status: development
+  metadata:
+    author: null
+    reviewer: null
+    date_created: null
+    date_modified: null
+    source_document: null
+    notes: null
+  coordinate_system:
+    origin: nose_tip
+    longitudinal_axis: nose_to_tail
+    rocketpy_orientation: nose_to_tail
+    axial_position_unit: m
+  geometry:
+    total_length: 2.882
+    maximum_diameter: 0.156
+    maximum_radius: null
+    reference_diameter: 0.156
+    reference_area_mode: calculated
+    reference_area_override: null
+  mass_properties:
+    method: measured
+    mass_without_motor: 17.003
+    center_of_mass_without_motor: 1.285
+    inertia:
+      I11: 5.38
+      I22: 5.38
+      I33: 0.075405296
+      I12: 0.0
+      I13: 0.0
+      I23: 0.0
+      reference: center_of_mass_without_motor
+      source: null
+  mass_components: []
+  drag:
+    reference_area: vehicle_reference_area
+    power_on:
+      source_type: file
+      file: aero/power_on_drag.csv
+      constant: null
+      interpolation: linear
+      extrapolation: forbidden
+    power_off:
+      source_type: file
+      file: aero/power_off_drag.csv
+      constant: null
+      interpolation: linear
+      extrapolation: forbidden
+  nose:
+    enabled: true
+    name: Nose Cone
+    type: vonkarman
+    length: 0.55
+    position: 0.0
+    base_radius: null
+    bluffness: null
+  body_sections: []
+  fin_sets:
+  - name: Main Fins
+    enabled: true
+    type: trapezoidal
+    number: 4
+    position: 2.494
+    root_chord: 0.3
+    tip_chord: 0.075
+    span: 0.17
+    sweep_angle_deg: 50.0
+    shape_points: null
+    body_radius: null
+    cant_angle_deg: 0.0
+    airfoil:
+      enabled: false
+      file: null
+      angle_unit: degrees
+  tails: []
+  rail_guides:
+    enabled: true
+    type: rail_buttons
+    upper_position: 1.5
+    lower_position: 2.65
+    angular_position_deg: 45.0
+    body_radius: null
+  motor_mount:
+    enabled: true
+    motor_config: motor.yaml
+    position: 2.1755
+    alignment:
+      axial_offset: 0.0
+      radial_offset_x: 0.0
+      radial_offset_y: 0.0
+      thrust_angle_x_deg: 0.0
+      thrust_angle_y_deg: 0.0
+  eccentricities:
+    center_of_mass:
+      enabled: false
+      x: 0.0
+      y: 0.0
+    center_of_pressure:
+      enabled: false
+      x: 0.0
+      y: 0.0
+    thrust:
+      enabled: false
+      x: 0.0
+      y: 0.0
+  air_brakes: []
+  payloads: []
+  staging:
+    enabled: false
+    stage_id: null
+    parent_stage: null
+  model_limits:
+    minimum_mach: 0.0
+    maximum_mach: null
+    minimum_angle_of_attack_deg: null
+    maximum_angle_of_attack_deg: null
+    maximum_expected_velocity: null
+    maximum_expected_dynamic_pressure: null
+    maximum_expected_acceleration: null
+  sanity_limits:
+    dry_mass:
+      minimum: null
+      maximum: null
+    center_of_mass:
+      minimum: 0.0
+      maximum: null
+    static_margin_calibers:
+      minimum: null
+      maximum: null
+    maximum_mach:
+      minimum: 0.0
+      maximum: null
+  provenance:
+    geometry:
+      source: null
+      reference: null
+    mass:
+      source: null
+      reference: null
+    center_of_mass:
+      source: null
+      reference: null
+    inertia:
+      source: null
+      reference: null
+    aerodynamics:
+      source: null
+      reference: null
+  tail:
+    top_diameter: 0.156
+    bottom_diameter: 0.1
+    length: 0.198
+    position: 2.684
