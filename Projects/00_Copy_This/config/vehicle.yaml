@@ -1,0 +1,716 @@
+# =============================================================================
+# ANTARES FLIGHT DYNAMICS
+# VEHICLE CONFIGURATION
+# =============================================================================
+#
+# File:
+#   vehicle.yaml
+#
+# Purpose:
+#   Defines the nominal physical and aerodynamic properties of the rocket,
+#   excluding motor, recovery system, environment and launch conditions.
+#
+# Units:
+#   SI units shall be used unless explicitly stated otherwise.
+#
+# Coordinate System:
+#
+#       Nose tip
+#          x = 0
+#            |
+#            |  +x
+#            v
+#          Tail
+#
+#   RocketPy orientation: nose_to_tail
+#
+#   All axial positions are measured from the nose tip toward the tail.
+#
+# =============================================================================
+
+
+schema_version: "1.0"
+
+
+# =============================================================================
+# IDENTIFICATION
+# =============================================================================
+
+vehicle:
+
+  name: "COPY_THIS"
+
+  project: null
+
+  revision: "0.1"
+
+  description: >
+    Template vehicle configuration.
+
+  status: "development"
+  # Suggested:
+  # development
+  # testing
+  # flight_ready
+  # archived
+
+
+# =============================================================================
+# TRACEABILITY
+# =============================================================================
+
+  metadata:
+
+    author: null
+
+    reviewer: null
+
+    date_created: null
+    # YYYY-MM-DD
+
+    date_modified: null
+
+    source_document: null
+    # Example:
+    # "CDR 2027 - Mass Properties Sheet"
+
+    notes: null
+
+
+# =============================================================================
+# COORDINATE SYSTEM
+# =============================================================================
+
+  coordinate_system:
+
+    origin: "nose_tip"
+
+    longitudinal_axis: "nose_to_tail"
+
+    rocketpy_orientation: "nose_to_tail"
+
+    axial_position_unit: "m"
+
+    # All positions in this file use the same origin and orientation.
+    #
+    # x = 0       -> nose tip
+    # x increases -> toward tail
+
+
+# =============================================================================
+# GENERAL GEOMETRY
+# =============================================================================
+
+  geometry:
+
+    total_length: null          # m
+
+    maximum_diameter: null      # m
+
+    maximum_radius: null        # m
+
+    # Reference diameter used for stability calculations.
+    reference_diameter: null    # m
+
+    # Normally derived from reference_diameter.
+    # Do not manually define unless necessary.
+    reference_area_mode: "calculated"
+
+    reference_area_override: null   # m²
+
+
+# =============================================================================
+# MASS PROPERTIES
+# =============================================================================
+#
+# IMPORTANT:
+#
+# These quantities describe the rocket WITHOUT THE MOTOR.
+#
+# This follows the RocketPy Rocket.mass and
+# center_of_mass_without_motor convention.
+#
+# Motor mass and propellant are defined separately in motor.yaml.
+#
+# =============================================================================
+
+  mass_properties:
+
+    method: "measured"
+    # measured
+    # calculated
+    # estimated
+
+    mass_without_motor: null       # kg
+
+    center_of_mass_without_motor: null   # m from nose tip
+
+
+    # -------------------------------------------------------------------------
+    # INERTIA TENSOR
+    # -------------------------------------------------------------------------
+    #
+    # Inertia of the rocket WITHOUT MOTOR about its center of mass.
+    #
+    # RocketPy accepts:
+    #
+    #   I11, I22, I33
+    #
+    # or the complete tensor:
+    #
+    #   I11, I22, I33, I12, I13, I23
+    #
+    # Units: kg.m²
+    #
+    # -------------------------------------------------------------------------
+
+    inertia:
+
+      I11: null
+      I22: null
+      I33: null
+
+      I12: 0.0
+      I13: 0.0
+      I23: 0.0
+
+      reference: "center_of_mass_without_motor"
+
+      source: null
+      # measured
+      # CAD
+      # analytical
+      # estimated
+
+
+# =============================================================================
+# OPTIONAL MASS BREAKDOWN
+# =============================================================================
+#
+# Used for bookkeeping / future automatic mass-property calculations.
+#
+# If mass_properties.method == "measured", this section shall NOT override
+# the measured mass and inertia.
+#
+# =============================================================================
+
+  mass_components: []
+
+  # Example:
+  #
+  # mass_components:
+  #
+  #   - name: "Avionics Bay"
+  #     mass: 1.20
+  #     position: 1.35
+  #
+  #   - name: "Recovery Bay"
+  #     mass: 0.85
+  #     position: 0.90
+  #
+  #   - name: "Airframe"
+  #     mass: 4.50
+  #     position: 1.60
+
+
+# =============================================================================
+# GLOBAL DRAG MODEL
+# =============================================================================
+#
+# RocketPy uses separate drag curves for:
+#
+#   power_on  -> motor burning
+#   power_off -> motor not burning
+#
+# The independent variable is Mach number.
+#
+# =============================================================================
+
+  drag:
+
+    reference_area: "vehicle_reference_area"
+
+    power_on:
+
+      source_type: "file"
+      # file
+      # constant
+
+      file: "aero/power_on_drag.csv"
+
+      constant: null
+
+      interpolation: "linear"
+
+      extrapolation: "forbidden"
+
+
+    power_off:
+
+      source_type: "file"
+
+      file: "aero/power_off_drag.csv"
+
+      constant: null
+
+      interpolation: "linear"
+
+      extrapolation: "forbidden"
+
+
+# =============================================================================
+# NOSE CONE
+# =============================================================================
+
+  nose:
+
+    enabled: true
+
+    name: "Nose Cone"
+
+    type: "von_karman"
+    # Examples supported by the project loader may include:
+    #
+    # von_karman
+    # conical
+    # ogive
+    # elliptical
+    # parabolic
+    # lv_haack
+
+    length: null                 # m
+
+    position: 0.0                # nose tip position
+
+    base_radius: null            # m
+    # null -> use vehicle radius
+
+    bluffness: null
+    # Optional depending on nose model
+
+
+# =============================================================================
+# BODY SECTIONS
+# =============================================================================
+#
+# Primarily geometric/documentation information.
+#
+# May later be used for visualization, diameter transitions,
+# aerodynamic models or automated checks.
+#
+# =============================================================================
+
+  body_sections: []
+
+  # Example:
+  #
+  # body_sections:
+  #
+  #   - name: "Forward Airframe"
+  #     start_position: 0.65
+  #     length: 0.80
+  #     outer_diameter: 0.150
+  #
+  #   - name: "Avionics Airframe"
+  #     start_position: 1.45
+  #     length: 0.60
+  #     outer_diameter: 0.150
+
+
+# =============================================================================
+# FIN SETS
+# =============================================================================
+#
+# More than one fin set may exist.
+#
+# Each position refers to the ROOT LEADING EDGE,
+# i.e. the point of the root chord closest to the nose.
+#
+# =============================================================================
+
+  fin_sets:
+
+    - name: "Main Fins"
+
+      enabled: true
+
+      type: "trapezoidal"
+      # trapezoidal
+      # elliptical
+      # free_form
+
+      number: null
+
+      position: null             # m from nose tip
+
+
+      # -----------------------------------------------------------------------
+      # TRAPEZOIDAL GEOMETRY
+      # -----------------------------------------------------------------------
+
+      root_chord: null           # m
+
+      tip_chord: null            # m
+
+      span: null                 # m
+
+      sweep_length: null         # m
+
+      sweep_angle_deg: null
+      # Use sweep_length OR sweep_angle_deg.
+      # Do not define both.
+
+
+      # -----------------------------------------------------------------------
+      # FREE-FORM GEOMETRY
+      # -----------------------------------------------------------------------
+
+      shape_points: null
+
+      # Example:
+      #
+      # shape_points:
+      #   - [0.000, 0.000]
+      #   - [0.080, 0.120]
+      #   - [0.180, 0.120]
+      #   - [0.250, 0.000]
+
+
+      # -----------------------------------------------------------------------
+      # INSTALLATION
+      # -----------------------------------------------------------------------
+
+      body_radius: null
+      # null -> use vehicle maximum radius
+
+      cant_angle_deg: 0.0
+
+
+      # -----------------------------------------------------------------------
+      # AIRFOIL
+      # -----------------------------------------------------------------------
+
+      airfoil:
+
+        enabled: false
+
+        file: null
+
+        angle_unit: "degrees"
+
+        # If disabled, the standard RocketPy fin model without
+        # external airfoil data is used.
+
+
+# =============================================================================
+# TAIL / BOATTAIL / DIAMETER TRANSITIONS
+# =============================================================================
+
+  tails: []
+
+  # Example:
+  #
+  # tails:
+  #
+  #   - name: "Boat Tail"
+  #
+  #     enabled: true
+  #
+  #     position: null
+  #
+  #     length: null
+  #
+  #     top_radius: null
+  #
+  #     bottom_radius: null
+
+
+# =============================================================================
+# RAIL GUIDES
+# =============================================================================
+#
+# RocketPy requires the effective upper and lower guide positions.
+#
+# With nose_to_tail coordinates:
+#
+# upper = guide closer to nose
+# lower = guide closer to motor/nozzle
+#
+# =============================================================================
+
+  rail_guides:
+
+    enabled: true
+
+    type: "rail_buttons"
+    # rail_buttons
+    # rail_guides
+
+    upper_position: null         # m
+
+    lower_position: null         # m
+
+    angular_position_deg: 45.0
+
+    body_radius: null
+    # null -> vehicle radius
+
+
+# =============================================================================
+# MOTOR INSTALLATION
+# =============================================================================
+#
+# Motor characteristics belong in motor.yaml.
+#
+# This section defines only how that motor is positioned inside this vehicle.
+#
+# motor_position refers to the origin of the motor coordinate system.
+#
+# =============================================================================
+
+  motor_mount:
+
+    enabled: true
+
+    motor_config: "motor.yaml"
+
+    position: null               # m from nose tip
+
+    alignment:
+
+      axial_offset: 0.0
+
+      radial_offset_x: 0.0       # m
+      radial_offset_y: 0.0       # m
+
+      thrust_angle_x_deg: 0.0
+      thrust_angle_y_deg: 0.0
+
+
+# =============================================================================
+# ECCENTRICITIES
+# =============================================================================
+#
+# Used when intentionally modeling manufacturing or integration offsets.
+#
+# Nominal symmetric vehicle -> all zero.
+#
+# Monte Carlo uncertainty should NOT be placed here.
+# It belongs in monte_carlo.yaml.
+#
+# =============================================================================
+
+  eccentricities:
+
+    center_of_mass:
+
+      enabled: false
+
+      x: 0.0                     # m
+      y: 0.0                     # m
+
+
+    center_of_pressure:
+
+      enabled: false
+
+      x: 0.0                     # m
+      y: 0.0                     # m
+
+
+    thrust:
+
+      enabled: false
+
+      x: 0.0                     # m
+      y: 0.0                     # m
+
+
+# =============================================================================
+# AIR BRAKES / ACTIVE AERODYNAMIC DEVICES
+# =============================================================================
+#
+# Geometry belongs here.
+# Controller logic should live in a dedicated control configuration/module.
+#
+# =============================================================================
+
+  air_brakes: []
+
+  # Example:
+  #
+  # air_brakes:
+  #
+  #   - name: "Air Brake System"
+  #
+  #     enabled: false
+  #
+  #     position: null
+  #
+  #     reference_area: null
+  #
+  #     drag_curve: "aero/airbrakes.csv"
+  #
+  #     controller: "controllers/airbrake.py"
+
+
+# =============================================================================
+# PAYLOADS
+# =============================================================================
+#
+# Optional.
+#
+# Useful for vehicles whose configuration changes during flight.
+#
+# Payload mass shall only be listed here if the software is configured
+# to include it automatically. Do not duplicate a mass already included
+# in mass_properties.mass_without_motor.
+#
+# =============================================================================
+
+  payloads: []
+
+  # Example:
+  #
+  # payloads:
+  #
+  #   - name: "Payload"
+  #
+  #     enabled: true
+  #
+  #     mass: null
+  #
+  #     center_of_mass: null
+  #
+  #     deployable: false
+
+
+# =============================================================================
+# STAGING
+# =============================================================================
+#
+# Reserved for future multistage support.
+#
+# =============================================================================
+
+  staging:
+
+    enabled: false
+
+    stage_id: null
+
+    parent_stage: null
+
+
+# =============================================================================
+# MODEL LIMITS
+# =============================================================================
+#
+# These values describe where the vehicle model is considered valid.
+#
+# They can later be used by automatic sanity checks.
+#
+# =============================================================================
+
+  model_limits:
+
+    minimum_mach: 0.0
+
+    maximum_mach: null
+
+    minimum_angle_of_attack_deg: null
+
+    maximum_angle_of_attack_deg: null
+
+    maximum_expected_velocity: null       # m/s
+
+    maximum_expected_dynamic_pressure: null   # Pa
+
+    maximum_expected_acceleration: null   # m/s²
+
+
+# =============================================================================
+# EXPECTED NOMINAL BOUNDS
+# =============================================================================
+#
+# NOT regression targets.
+#
+# These are broad sanity limits intended to catch obvious configuration errors.
+#
+# =============================================================================
+
+  sanity_limits:
+
+    dry_mass:
+
+      minimum: null               # kg
+      maximum: null               # kg
+
+    center_of_mass:
+
+      minimum: 0.0
+      maximum: null               # normally <= total_length
+
+    static_margin_calibers:
+
+      minimum: null
+      maximum: null
+
+    maximum_mach:
+
+      minimum: 0.0
+      maximum: null
+
+
+# =============================================================================
+# DATA PROVENANCE
+# =============================================================================
+
+  provenance:
+
+    geometry:
+
+      source: null
+      # CAD
+      # drawing
+      # measurement
+      # estimate
+
+      reference: null
+
+
+    mass:
+
+      source: null
+      # scale
+      # CAD
+      # analytical
+      # estimate
+
+      reference: null
+
+
+    center_of_mass:
+
+      source: null
+
+      reference: null
+
+
+    inertia:
+
+      source: null
+
+      reference: null
+
+
+    aerodynamics:
+
+      source: null
+      # CFD
+      # OpenRocket
+      # wind_tunnel
+      # analytical
+      # combined
+
+      reference: null
