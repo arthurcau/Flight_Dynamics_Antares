@@ -2,10 +2,10 @@ from antares_fd.builders import build_environment, build_motor, build_vehicle, a
 from antares_fd.simulation.runner import run_flight
 from antares_fd.simulation.results import print_flight_summary
 
-def execute_scenario(config, project_dir):
+def execute_scenario(config, project_dir, print_summary=True, export_kml=True):
     """
     Central orchestrator that builds the environment, motor, and vehicle
-    from a given config, runs the simulation, and exports the results.
+    from a given config, runs the simulation, and optionally exports the results.
     """
     # 1. Build Environment
     environment = build_environment(config.environment, config.launch)
@@ -23,6 +23,7 @@ def execute_scenario(config, project_dir):
     flight = run_flight(rocket, environment, config.launch, config.simulation)
     
     # 6. Export Results
-    print_flight_summary(flight, project_dir=project_dir)
-    
+    if print_summary:
+        print_flight_summary(flight, project_dir=project_dir)
+        
     return flight

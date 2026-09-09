@@ -74,11 +74,17 @@ def load_project_config(project_dir: Path) -> ProjectConfig:
         sim_raw = _load_yaml_file(config_dir / "simulation.yaml")
         simulation_config = _dict_to_config_dict(sim_raw.get("simulation", sim_raw))
         
+    monte_carlo_config = None
+    if (config_dir / "monte_carlo.yaml").exists():
+        mc_raw = _load_yaml_file(config_dir / "monte_carlo.yaml")
+        monte_carlo_config = _dict_to_config_dict(mc_raw.get("monte_carlo", mc_raw))
+        
     return ProjectConfig(
         vehicle=vehicle_config,
         recovery=recovery_config,
         launch=launch_config,
         motor=motor_config,
         environment=environment_config,
-        simulation=simulation_config
+        simulation=simulation_config,
+        monte_carlo=monte_carlo_config
     )

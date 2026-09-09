@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 class ConfigDict(dict):
     """
@@ -24,5 +24,6 @@ class ProjectConfig:
     recovery: ConfigDict
     launch: ConfigDict
     motor: ConfigDict | None = None
-    environment: ConfigDict | None = None
-    simulation: ConfigDict | None = None
+    environment: Optional[ConfigDict] = None
+    simulation: Optional[ConfigDict] = None
+    monte_carlo: Optional[ConfigDict] = None

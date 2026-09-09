@@ -1,0 +1,20 @@
+monte_carlo:
+  num_simulations: 100
+  flight:
+    inclination:
+      std: 1.0
+    heading:
+      std: 5.0
+  environment:
+    wind_velocity_x:
+      std: 1.0 # Standard deviation in m/s (equivalent to wind factor if mean is 0, but usually we use factor)
+      factor_std: 0.2 # We will multiply the deterministic wind by (1 + N(0, 0.2))
+    wind_velocity_y:
+      factor_std: 0.2
+  vehicle:
+    mass:
+      std: 0.1 # kg
+    power_off_drag_factor:
+      std: 0.1 # 10% uncertainty
+    power_on_drag_factor:
+      std: 0.1 # 10% uncertainty

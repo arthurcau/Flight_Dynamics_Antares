@@ -21,3 +21,21 @@ htmlcov/
 *.kml
 *_map.pdf
 data/
+
+# Data and Cache
+MAGI/dados_cache/
+monte_carlo_results.*
+# RocketPy / Monte Carlo generated outputs
+*.inputs.txt
+*.inputs.txt.gz
+*.outputs.txt
+*.outputs.txt.gz
+
+# Meteorological data
+*.grib
+*.grib2
+*.nc
+*.nc4
+
+# Generated results
+monte_carlo_results*
