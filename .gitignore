@@ -19,11 +19,15 @@ htmlcov/
 
 # Antares Flight Dynamics / RocketPy Outputs
 *.kml
-*_map.pdf
+# Ignorar PDFs gerados pelas simulações em qualquer subpasta de projects
+projects/**/*.pdf
 data/
 
 # Data and Cache
 MAGI/dados_cache/
+MAGI/**/*.db
+MAGI/**/*.sqlite
+MAGI/**/*.csv
 monte_carlo_results.*
 # RocketPy / Monte Carlo generated outputs
 *.inputs.txt
