@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Ensures the core 'Source' package can be imported
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-SOURCE_DIR = PROJECT_ROOT / "Source"
+SOURCE_DIR = PROJECT_ROOT / "source"
 if str(SOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(SOURCE_DIR))
 
