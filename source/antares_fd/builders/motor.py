@@ -20,7 +20,7 @@ def build_motor(config, project_dir: Path):
     if motor_type == "solid":
         # We expect config to provide the basic RocketPy SolidMotor parameters
         thrust_source = config.get("thrust_source")
-        if thrust_source:
+        if isinstance(thrust_source, str):
             thrust_source = str(project_dir / thrust_source)
             
         try:

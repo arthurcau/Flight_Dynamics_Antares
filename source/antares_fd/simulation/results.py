@@ -1,6 +1,13 @@
+import sys
+import yaml
+import subprocess
+import datetime
+from pathlib import Path
+import os
+
 def print_flight_summary(flight, project_dir=None):
     """
-    Prints a standard summary of the flight simulation and exports KML.
+    Prints a standard summary of the flight simulation, exports KML, PDF, and Manifest.
     """
     if flight is None:
         print("Flight Summary: No flight generated.")
@@ -22,10 +29,19 @@ def print_flight_summary(flight, project_dir=None):
     print("="*50)
     
     if project_dir:
+        # Determine script name and run ID
+        script_name = Path(sys.argv[0]).stem
+        run_timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H%M%SZ')
+        run_id = f"{run_timestamp}_{project_dir.name}_{script_name}"
+        
+        # We output to results/<project>/<run_id>/
+        results_dir = project_dir.parents[1] / "results" / project_dir.name / run_id
+        results_dir.mkdir(parents=True, exist_ok=True)
+        
         # Export KML
         try:
             from rocketpy.simulation.flight_data_exporter import FlightDataExporter
-            output_kml = project_dir / "trajectory.kml"
+            output_kml = results_dir / "trajectory.kml"
             FlightDataExporter(flight).export_kml(
                 file_name=str(output_kml),
                 extrude=True,
@@ -49,9 +65,7 @@ def print_flight_summary(flight, project_dir=None):
                 line = Line(coords, 'red', 3)
                 m.add_line(line)
                 
-                import sys
-                script_name = Path(sys.argv[0]).stem
-                output_pdf = project_dir / f"{project_dir.name}_{script_name}.pdf"
+                output_pdf = results_dir / f"{project_dir.name}_{script_name}.pdf"
                 img = m.render()
                 img.save(str(output_pdf), "PDF", resolution=100.0)
                 print(f"[PDF Export] Map trajectory saved to: {output_pdf}")
@@ -61,4 +75,32 @@ def print_flight_summary(flight, project_dir=None):
         except Exception as e:
             print(f"\n[PDF Export Failed] {e}")
             
+        # Write Manifest
+        try:
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(project_dir)).decode().strip()
+            dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=str(project_dir)).decode().strip())
+        except Exception:
+            commit = "unknown"
+            dirty = False
+
+        manifest = {
+            "run": {
+                "id": run_id,
+                "timestamp_utc": datetime.datetime.utcnow().isoformat(),
+                "script": script_name,
+                "project": project_dir.name,
+                "apogee_m": float(flight.apogee),
+                "max_mach": float(flight.max_mach_number)
+            },
+            "git": {
+                "commit": commit,
+                "dirty_worktree": dirty,
+            }
+        }
+        
+        with open(results_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest, f, default_flow_style=False)
+            
+        print(f"[Manifest] Traceability data saved to: {results_dir / 'manifest.yaml'}")
+
     print("\n")

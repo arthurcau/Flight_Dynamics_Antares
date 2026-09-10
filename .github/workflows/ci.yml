@@ -1,0 +1,48 @@
+name: Flight Dynamics CI
+
+on:
+  push:
+    branches: [ "main", "Experimental" ]
+  pull_request:
+    branches: [ "main", "Experimental" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+        cache: 'pip'
+
+    - name: Cache MAGI Data
+      uses: actions/cache@v3
+      with:
+        path: MAGI/dados_cache
+        key: ${{ runner.os }}-magi-${{ hashFiles('MAGI/**/*.py') }}
+        restore-keys: |
+          ${{ runner.os }}-magi-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        if [ -f setup.sh ]; then
+          bash setup.sh
+        else
+          pip install -e .
+          pip install -r requirements.txt
+        fi
+
+    - name: Run Tests
+      run: |
+        pytest tests/ --cov=source/antares_fd --cov-report=xml --cov-report=term
+
+    - name: Upload coverage
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage.xml
