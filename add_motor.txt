@@ -1,0 +1,21 @@
+Help on function add_motor in module rocketpy.rocket.rocket:
+
+add_motor(self, motor, position)
+    Adds a motor to the rocket.
+
+    Parameters
+    ----------
+    motor : Motor, SolidMotor, HybridMotor, LiquidMotor, GenericMotor
+        Motor to be added to the rocket.
+    position : int, float
+        Position, in meters, of the motor's coordinate system origin
+        relative to the user defined rocket coordinate system.
+
+    See Also
+    --------
+    :ref:`addsurface`
+
+    Returns
+    -------
+    None
+

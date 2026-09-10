@@ -39,3 +39,7 @@ monte_carlo_results.*
 
 # Generated results
 monte_carlo_results*
+
+# All generated simulation results
+results/
+

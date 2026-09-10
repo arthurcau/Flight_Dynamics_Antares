@@ -1,0 +1,548 @@
+Help on class MonteCarlo in module rocketpy.simulation.monte_carlo:
+
+class MonteCarlo(builtins.object)
+ |  MonteCarlo(
+ |      filename,
+ |      environment,
+ |      rocket,
+ |      flight,
+ |      export_list=None,
+ |      data_collector=None
+ |  )
+ |
+ |  Class to run a Monte Carlo simulation of a rocket flight.
+ |
+ |  Attributes
+ |  ----------
+ |  filename : str
+ |      Represents the initial part of the export filenames or the .txt file
+ |      containing the outputs of a previous simulation.
+ |  environment : StochasticEnvironment
+ |      The stochastic environment object to be iterated over.
+ |  rocket : StochasticRocket
+ |      The stochastic rocket object to be iterated over.
+ |  flight : StochasticFlight
+ |      The stochastic flight object to be iterated over.
+ |  export_list : list
+ |      The list of variables to export at each simulation.
+ |  data_collector : dict
+ |      A dictionary whose keys are the names of the additional
+ |      exported variables and the values are callback functions.
+ |  inputs_log : list
+ |      List of dictionaries with the inputs used in each simulation.
+ |  outputs_log : list
+ |      List of dictionaries with the outputs of each simulation.
+ |  errors_log : list
+ |      List of dictionaries with the errors of each simulation.
+ |  num_of_loaded_sims : int
+ |      Number of simulations loaded from output_file currently being used.
+ |  results : dict
+ |      Monte Carlo analysis results organized in a dictionary where the keys
+ |      are the names of the saved attributes, and the values are lists with all
+ |      the result numbers of the respective attributes.
+ |  processed_results : dict
+ |      Dictionary with the mean and standard deviation of each parameter
+ |      available in the results.
+ |  prints : _MonteCarloPrints
+ |      Object with methods to print information about the Monte Carlo simulation.
+ |      Use help(MonteCarlo.prints) for more information.
+ |  plots : _MonteCarloPlots
+ |      Object with methods to plot information about the Monte Carlo simulation.
+ |      Use help(MonteCarlo.plots) for more information.
+ |  number_of_simulations : int
+ |      Number of simulations to be run.
+ |  total_wall_time : float
+ |      The total elapsed real-world time from the start to the end of the
+ |      simulation, including all waiting times and delays.
+ |  total_cpu_time : float
+ |      The total CPU time spent running the simulation, excluding the time
+ |      spent waiting for I/O operations or other processes to complete.
+ |
+ |  Methods defined here:
+ |
+ |  __init__(
+ |      self,
+ |      filename,
+ |      environment,
+ |      rocket,
+ |      flight,
+ |      export_list=None,
+ |      data_collector=None
+ |  )
+ |      Initialize a MonteCarlo object.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Represents the initial part of the export filenames or the .txt file
+ |          containing the outputs of a previous simulation.
+ |      environment : StochasticEnvironment
+ |          The stochastic environment object to be iterated over.
+ |      rocket : StochasticRocket
+ |          The stochastic rocket object to be iterated over.
+ |      flight : StochasticFlight
+ |          The stochastic flight object to be iterated over.
+ |      export_list : list, optional
+ |          The list of variables to export. If None, the default list will be
+ |          used, which includes the following variables: `apogee`, `apogee_time`,
+ |          `apogee_x`, `apogee_y`, `t_final`, `x_impact`, `y_impact`,
+ |          `impact_velocity`, `initial_stability_margin`,
+ |          `out_of_rail_stability_margin`, `out_of_rail_time`,
+ |          `out_of_rail_velocity`, `max_mach_number`, `frontal_surface_wind`,
+ |          `lateral_surface_wind`. Default is None.
+ |      data_collector : dict, optional
+ |          A dictionary whose keys are the names of the exported variables
+ |          and the values are callback functions. The keys (variable names) must not
+ |          overwrite the default names on 'export_list'. The callback functions receive
+ |          a Flight object and returns a value of that variable. For instance
+ |
+ |          .. code-block:: python
+ |
+ |              custom_data_collector = {
+ |                  "max_acceleration": lambda flight: max(flight.acceleration(flight.time)),
+ |                  "date": lambda flight: flight.env.date,
+ |              }
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  all_info(self)
+ |      Print and plot information about the Monte Carlo simulation and its results.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  compare_ellipses(self, other_monte_carlo, **kwargs)
+ |      Plots the comparison of the ellipses of the Monte Carlo simulation
+ |      against the ellipses of another Monte Carlo simulation.
+ |      Parameters
+ |      ----------
+ |      other_monte_carlo : MonteCarlo
+ |          MonteCarlo object which the current one will be compared to.
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  compare_info(self, other_monte_carlo)
+ |      Prints the comparison of the information  of the Monte Carlo simulation
+ |      against the information of another Monte Carlo simulation.
+ |      Parameters
+ |      ----------
+ |      other_monte_carlo : MonteCarlo
+ |          MonteCarlo object which the current one will be compared to.
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  compare_plots(self, other_monte_carlo)
+ |      Plots the comparison of the information of the Monte Carlo simulation
+ |      against the information of another Monte Carlo simulation.
+ |      Parameters
+ |      ----------
+ |      other_monte_carlo : MonteCarlo
+ |          MonteCarlo object which the current one will be compared to.
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  estimate_confidence_interval(
+ |      self,
+ |      attribute,
+ |      statistic=<function mean at 0x702021f821f0>,
+ |      confidence_level=0.95,
+ |      n_resamples=1000,
+ |      random_state=None
+ |  )
+ |      Estimates the confidence interval for a specific attribute of the results
+ |      using the bootstrap method.
+ |
+ |      Parameters
+ |      ----------
+ |      attribute : str
+ |          The name of the attribute stored in self.results (e.g., "apogee", "max_velocity").
+ |      statistic : callable, optional
+ |          A function that computes the statistic of interest (e.g., np.mean, np.std).
+ |          Default is np.mean.
+ |      confidence_level : float, optional
+ |          The confidence level for the interval (between 0 and 1). Default is 0.95.
+ |      n_resamples : int, optional
+ |          The number of resamples to perform. Default is 1000.
+ |      random_state : int or None, optional
+ |          Seed for the random number generator to ensure reproducibility. If None (default), the random number generator is not seeded.
+ |
+ |      Returns
+ |      -------
+ |      confidence_interval : ConfidenceInterval
+ |          An object containing the low and high bounds of the confidence interval.
+ |          Access via .low and .high.
+ |
+ |  export_ellipses_to_kml(
+ |      self,
+ |      filename,
+ |      origin_lat,
+ |      origin_lon,
+ |      type='all',
+ |      resolution=100,
+ |      colors=('ffff0000', 'ff00ff00')
+ |  )
+ |      Generates a KML file with the ellipses on the impact point, which can be
+ |      used to visualize the dispersion ellipses on Google Earth.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Name to the KML exported file.
+ |      origin_lat : float
+ |          Latitude coordinate of Ellipses' geometric center, in degrees.
+ |      origin_lon : float
+ |          Longitude coordinate of Ellipses' geometric center, in degrees.
+ |      type : str, optional
+ |          Type of ellipses to be exported. Options are: 'all', 'impact' and
+ |          'apogee'. Default is 'all', it exports both apogee and impact ellipses.
+ |      resolution : int, optional
+ |          Number of points to be used to draw the ellipse. Default is 100. You
+ |          can increase this number to make the ellipse smoother, but it will
+ |          increase the file size. It is recommended to keep it below 1000.
+ |      colors : tuple[str, str], optional
+ |          Colors of the ellipses. Default is ['ffff0000', 'ff00ff00'], which
+ |          are blue and green, respectively. The first element is the color of
+ |          the impact ellipses, and the second element is the color of the
+ |          apogee. The colors are in hexadecimal format (aabbggrr).
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |      Notes
+ |      -----
+ |      - For further understanding on .kml files, see the official documentation:            https://developers.google.com/kml/documentation/kmlreference
+ |      - You can set a pair of origin coordinates different from the launch site            to visualize the dispersion as if the rocket was launched from that            point. This is useful to visualize the dispersion ellipses in a            different location. However, this approach is not accurate for            large distances offsets, as the atmospheric conditions may change.
+ |
+ |  export_errors_to_csv(self, filename, flatten=False)
+ |      Export simulation errors to a CSV file.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Path to the output CSV file.
+ |      flatten : bool, optional
+ |          If True, columns with non-scalar values (dicts, lists) are
+ |          omitted from the CSV. If False (default), non-scalar values
+ |          are serialized as JSON strings within the CSV cells.
+ |
+ |      Raises
+ |      ------
+ |      ValueError
+ |          If no error data is available to export.
+ |
+ |  export_errors_to_json(self, filename)
+ |      Export simulation errors to a JSON file as an array of objects.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Path to the output JSON file.
+ |
+ |      Raises
+ |      ------
+ |      ValueError
+ |          If no error data is available to export.
+ |
+ |  export_inputs_to_csv(self, filename, flatten=False)
+ |      Export simulation inputs to a CSV file.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Path to the output CSV file.
+ |      flatten : bool, optional
+ |          If True, columns with non-scalar values (dicts, lists) are
+ |          omitted from the CSV. If False (default), non-scalar values
+ |          are serialized as JSON strings within the CSV cells.
+ |
+ |      Raises
+ |      ------
+ |      ValueError
+ |          If no input data is available to export.
+ |
+ |  export_inputs_to_json(self, filename)
+ |      Export simulation inputs to a JSON file as an array of objects.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Path to the output JSON file.
+ |
+ |      Raises
+ |      ------
+ |      ValueError
+ |          If no input data is available to export.
+ |
+ |  export_outputs_to_csv(self, filename)
+ |      Export simulation outputs to a CSV file.
+ |
+ |      Each row represents one simulation. All output values are scalar,
+ |      so the CSV is directly usable in spreadsheet applications.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Path to the output CSV file.
+ |
+ |      Raises
+ |      ------
+ |      ValueError
+ |          If no output data is available to export.
+ |
+ |  export_outputs_to_json(self, filename)
+ |      Export simulation outputs to a JSON file as an array of objects.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str
+ |          Path to the output JSON file.
+ |
+ |      Raises
+ |      ------
+ |      ValueError
+ |          If no output data is available to export.
+ |
+ |  import_errors(self, filename=None)
+ |      Import Monte Carlo errors from a file and save it into a dictionary.
+ |      Supports .txt (JSONL), .csv, and .json file formats.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str, optional
+ |          Name or directory path to the file to be imported. If none,
+ |          self.filename will be used with the default .errors.txt suffix.
+ |          Files with .csv or .json extensions are also accepted.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  import_inputs(self, filename=None)
+ |      Import Monte Carlo inputs from a file and save it into a dictionary.
+ |      Supports .txt (JSONL), .csv, and .json file formats.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str, optional
+ |          Name or directory path to the file to be imported. If none,
+ |          self.filename will be used with the default .inputs.txt suffix.
+ |          Files with .csv or .json extensions are also accepted.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  import_outputs(self, filename=None)
+ |      Import Monte Carlo results from a file and save it into a dictionary.
+ |      Supports .txt (JSONL), .csv, and .json file formats.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str, optional
+ |          Name or directory path to the file to be imported. If none,
+ |          self.filename will be used with the default .outputs.txt suffix.
+ |          Files with .csv or .json extensions are also accepted.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |      Notes
+ |      -----
+ |      Notice that you can import the outputs, inputs, and errors from a
+ |      file without the need to run simulations. You can use previously saved
+ |      files to process analyze the results or to continue a simulation.
+ |
+ |  import_results(self, filename=None)
+ |      Import Monte Carlo results from a file and save it into a dictionary.
+ |
+ |      Parameters
+ |      ----------
+ |      filename : str, optional
+ |          Name or directory path to the file to be imported. If ``None``,
+ |          self.filename will be used.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  info(self)
+ |      Print information about the Monte Carlo simulation.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  set_errors_log(self)
+ |      Sets errors_log from a file into an attribute for easy access.
+ |      Supports .txt (JSONL), .csv, and .json file formats.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  set_inputs_log(self)
+ |      Sets inputs_log from a file into an attribute for easy access.
+ |      Supports .txt (JSONL), .csv, and .json file formats.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  set_num_of_loaded_sims(self)
+ |      Determines the number of simulations loaded from output_file being
+ |      currently used. Supports .txt (JSONL), .csv, and .json formats.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  set_outputs_log(self)
+ |      Sets outputs_log from a file into an attribute for easy access.
+ |      Supports .txt (JSONL), .csv, and .json file formats.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  set_processed_results(self)
+ |      Creates a dictionary with the mean and standard deviation of each
+ |      parameter available in the results.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  set_results(self)
+ |      Monte Carlo results organized in a dictionary where the keys are the
+ |      names of the saved attributes, and the values are lists with all the
+ |      result numbers of the respective attributes. For instance:
+ |
+ |          .. code-block:: python
+ |
+ |              {
+ |                  'apogee': [1000, 1001, 1002, ...],
+ |                  'max_speed': [100, 101, 102, ...],
+ |              }
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |  simulate(
+ |      self,
+ |      number_of_simulations,
+ |      append=False,
+ |      parallel=False,
+ |      n_workers=None,
+ |      **kwargs
+ |  )
+ |      Runs the Monte Carlo simulation and saves all data.
+ |
+ |      Parameters
+ |      ----------
+ |      number_of_simulations : int
+ |          Number of simulations to be run, must be non-negative.
+ |      append : bool, optional
+ |          If True, the results will be appended to the existing files. If
+ |          False, the files will be overwritten. Default is False.
+ |      parallel : bool, optional
+ |          If True, the simulations will be run in parallel. Default is False.
+ |      n_workers : int, optional
+ |          Number of workers to be used if ``parallel=True``. If None, the
+ |          number of workers will be equal to the number of CPUs available.
+ |          A minimum of 2 workers is required for parallel mode.
+ |          Default is None.
+ |      kwargs : dict
+ |          Custom arguments for simulation export of the ``inputs`` file. Options
+ |          are:
+ |
+ |              * ``include_outputs``: whether to also include outputs data of the
+ |                simulation. Default is ``False``.
+ |
+ |              * ``include_function_data``: whether to include ``rocketpy.Function``
+ |                results into the export. Default is ``True``.
+ |
+ |          See ``rocketpy._encoders.RocketPyEncoder`` for more information.
+ |
+ |      Returns
+ |      -------
+ |      None
+ |
+ |      Notes
+ |      -----
+ |      If you need to stop the simulations after starting them, you can
+ |      interrupt the process and the files will be saved with the results
+ |      until the last iteration. You can then load the results and continue
+ |      the simulation by running the ``simulate`` method again with the
+ |      same number of simulations and setting `append=True`.
+ |
+ |      Important
+ |      ---------
+ |      If you use `append=False` and the files already exist, they will be
+ |      overwritten. Make sure to save the files with the results before
+ |      running the simulation again with `append=False`.
+ |
+ |  simulate_convergence(
+ |      self,
+ |      target_attribute='apogee_time',
+ |      target_confidence=0.95,
+ |      tolerance=0.5,
+ |      max_simulations=1000,
+ |      batch_size=50,
+ |      parallel=False,
+ |      n_workers=None
+ |  )
+ |      Run Monte Carlo simulations in batches until the confidence interval
+ |      width converges within the specified tolerance or the maximum number of
+ |      simulations is reached.
+ |
+ |      Parameters
+ |      ----------
+ |      target_attribute : str
+ |          The target attribute to track its convergence (e.g., "apogee", "apogee_time", etc.).
+ |      target_confidence : float, optional
+ |          The confidence level for the interval (between 0 and 1). Default is 0.95.
+ |      tolerance : float, optional
+ |          The desired width of the confidence interval in seconds, meters, or other units. Default is 0.5.
+ |      max_simulations : int, optional
+ |          The maximum number of simulations to run to avoid infinite loops. Default is 1000.
+ |      batch_size : int, optional
+ |          The number of simulations to run in each batch. Default is 50.
+ |      parallel : bool, optional
+ |          Whether to run simulations in parallel. Default is False.
+ |      n_workers : int, optional
+ |          The number of worker processes to use if running in parallel. Default is None.
+ |
+ |      Returns
+ |      -------
+ |      confidence_interval_history : list of float
+ |          History of confidence interval widths, one value per batch of simulations.
+ |          The last element corresponds to the width when the simulation stopped for
+ |          either meeting the tolerance or reaching the maximum number of simulations.
+ |
+ |  ----------------------------------------------------------------------
+ |  Data descriptors defined here:
+ |
+ |  __dict__
+ |      dictionary for instance variables
+ |
+ |  __weakref__
+ |      list of weak references to the object
+ |
+ |  error_file
+ |      String representing the filepath of the error file
+ |
+ |  input_file
+ |      String representing the filepath of the input file
+ |
+ |  output_file
+ |      String representing the filepath of the output file
+
