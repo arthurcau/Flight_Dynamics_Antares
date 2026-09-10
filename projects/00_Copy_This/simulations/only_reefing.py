@@ -35,7 +35,7 @@ def main():
             device["name"] = "Main Parachute (Reefed)"
             if main_cd_s is not None:
                 # Example: Reefed state has 15% of the fully open Cd*S
-                device["aerodynamics"]["cd_s"] = main_cd_s * 0.15
+                device["aerodynamics"]["cd_s"] = main_cd_s * 0.3
 
     # 3. Execute scenario
     flight = execute_scenario(config, PROJECT_DIR)
