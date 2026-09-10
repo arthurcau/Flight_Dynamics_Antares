@@ -26,22 +26,45 @@ def execute_monte_carlo(config, project_dir):
     # Force seed reproducibility
     np.random.seed(seed)
     random.seed(seed)
-
-    print(f"\n[Monte Carlo] Building Nominal Models and Stochastics...")
-
-    # 1. Environment
-    env = build_environment(config.environment, config.launch)
     
-    env_cfg = mc_cfg.get("environment", {})
-    wx_f = env_cfg.get("wind_velocity_x", {}).get("factor_std", 0.0)
-    wy_f = env_cfg.get("wind_velocity_y", {}).get("factor_std", 0.0)
+    from antares_fd.builders.environment import build_environment, build_environment_ensemble
+    
+    print("[Monte Carlo] Building Nominal Models and Stochastics...")
+    # Get nominal env for vehicle builder, and the ensemble list for Monte Carlo
+    nominal_env = build_environment(config.environment, config.launch)
+    env_ensemble = build_environment_ensemble(config.environment, config.launch)
+    
+    # Motor & Vehicle built exactly like a nominal run
+    nominal_motor = build_motor(config.motor, project_dir)
+    nominal_rocket = build_vehicle(config.vehicle, nominal_motor, project_dir)
+    add_recovery_system(nominal_rocket, config.recovery)
+    
+    # --- 3. Map Config to RocketPy Stochastics ---
+    # We use the list of environments in `ensemble_member` if there are multiple.
+    # Otherwise we just use the nominal_env and random noise.
+    # Compute std dev from MAGI ensemble
+    wind_x_std = 0.0
+    wind_y_std = 0.0
+    if len(env_ensemble) > 1:
+        # get max wind speed to scale
+        wx_list = []
+        wy_list = []
+        for e in env_ensemble:
+            wx_list.append(e.wind_velocity_x(1000))
+            wy_list.append(e.wind_velocity_y(1000))
+        wind_x_std = float(np.std(wx_list)) if wx_list else 1.0
+        wind_y_std = float(np.std(wy_list)) if wy_list else 1.0
+        print(f"[MAGI-Stochastic] Computed Ensemble variance: std_x={wind_x_std:.2f}, std_y={wind_y_std:.2f}")
+
+    # Fallback to config if ensemble is disabled
+    user_wx_std = config.environment.get("wind_velocity_x_factor_std", None)
     
     stoch_env = StochasticEnvironment(
-        env,
-        wind_velocity_x_factor=(1.0, wx_f) if wx_f else None,
-        wind_velocity_y_factor=(1.0, wy_f) if wy_f else None,
+        environment=nominal_env,
+        wind_velocity_x_factor=(1.0, (wind_x_std/3.0) if wind_x_std > 0 else (user_wx_std or 0.0)),
+        wind_velocity_y_factor=(1.0, (wind_y_std/3.0) if wind_y_std > 0 else (user_wx_std or 0.0)),
+        elevation=config.environment.get("elevation_std", None)
     )
-
     # 2. Motor
     motor = build_motor(config.motor, project_dir)
     mot_cfg = mc_cfg.get("motor", {})
@@ -70,7 +93,7 @@ def execute_monte_carlo(config, project_dir):
     stoch_rocket.add_motor(stoch_motor, position=rocket.motor_position)
 
     # 4. Flight
-    flight = Flight(rocket, env, rail_length=config.launch.get("rail_length", 5.2), inclination=config.launch.get("inclination", 85.0), heading=config.launch.get("heading", 0.0))
+    flight = Flight(rocket, nominal_env, rail_length=config.launch.get("rail_length", 5.2), inclination=config.launch.get("inclination", 85.0), heading=config.launch.get("heading", 0.0))
     flt_cfg = mc_cfg.get("flight", {})
     inc_std = flt_cfg.get("inclination", {}).get("std", 0.0)
     hdg_std = flt_cfg.get("heading", {}).get("std", 0.0)
