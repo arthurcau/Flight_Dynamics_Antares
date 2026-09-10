@@ -17,7 +17,7 @@ def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None
     
     state_mgr = StateManager(cache_dir=cache_dir)
     balthasar = Balthasar(cache_dir=cache_dir, elevation_msl=elevation)
-    forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast()
+    forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str)
     
     # If no data returned
     if forecast_result is None or (isinstance(forecast_result, pd.DataFrame) and forecast_result.empty):
