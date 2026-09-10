@@ -1,0 +1,10 @@
+git:
+  commit: 6763f2f766e1b4408bb8f4e3b9a97d3f82cc37ae
+  dirty_worktree: true
+run:
+  apogee_m: 938.4291554416404
+  id: 2026-09-10T131846Z_andorinha_nominal
+  max_mach: 0.24833725612726365
+  project: andorinha
+  script: nominal
+  timestamp_utc: '2026-09-10T13:18:48.245709'

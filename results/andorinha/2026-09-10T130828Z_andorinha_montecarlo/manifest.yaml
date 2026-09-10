@@ -1,0 +1,14 @@
+git:
+  commit: 6763f2f766e1b4408bb8f4e3b9a97d3f82cc37ae
+  dirty_worktree: true
+monte_carlo:
+  enabled: true
+  seed: 42
+  simulations: 5
+run:
+  completed_cases: 5
+  failed_cases: 0
+  id: 2026-09-10T130828Z_andorinha_montecarlo
+  requested_cases: 5
+  status: completed
+  timestamp_utc: '2026-09-10T13:08:35.815163'
