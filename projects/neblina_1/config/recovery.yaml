@@ -23,7 +23,7 @@ recovery:
     type: parachute
     aerodynamics:
       method: cd_s
-      cd_s: 0.102
+      cd_s: 0.1645
       drag_coefficient: null
       reference_area: null
       geometry:
@@ -57,7 +57,7 @@ recovery:
         time_correlation: 0.0
         random_seed: null
     deployment:
-      lag: 1.0
+      lag: 2.0
     ejection_system:
       type: null
       channel: null
@@ -84,7 +84,7 @@ recovery:
     type: parachute
     aerodynamics:
       method: cd_s
-      cd_s: 4.339
+      cd_s: 6.7171
       drag_coefficient: null
       reference_area: null
       geometry:
@@ -96,7 +96,7 @@ recovery:
       apogee:
         enabled: false
       altitude:
-        value: 400.0
+        value: 500.0
         direction: descending
       time:
         value: null
@@ -118,7 +118,7 @@ recovery:
         time_correlation: 0.0
         random_seed: null
     deployment:
-      lag: 2.0
+      lag: 1.0
     ejection_system:
       type: null
       channel: null

@@ -1,6 +1,6 @@
 agora comoschema_version: '1.0'
 launch:
-  name: Nominal Launch
+  name: Neblina Launch
   revision: '0.1'
   description: 'Nominal launch configuration.
 
@@ -14,9 +14,9 @@ launch:
     notes: null
   site:
     name: Sugarcane Launch Range
-    latitude: -21.943053
-    longitude: -48.954086
-    elevation: 490.0
+    latitude: -21.90795
+    longitude: -48.96156
+    elevation: 495.0
     datum: SIRGAS2000
     country: Brazil
     state: SP
@@ -25,8 +25,8 @@ launch:
     coordinates_source: null
     elevation_source: null
   datetime:
-    date: '2027-09-03'
-    time: '14:30:00'
+    date: '2026-09-03'
+    time: '10:30:00'
     timezone: America/Sao_Paulo
     status: planned
   rail:

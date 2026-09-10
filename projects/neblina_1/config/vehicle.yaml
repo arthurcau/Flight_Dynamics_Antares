@@ -1,6 +1,6 @@
 schema_version: '1.0'
 vehicle:
-  name: COPY_THIS
+  name: neblina
   project: null
   revision: '0.1'
   description: 'Template vehicle configuration.
@@ -28,8 +28,8 @@ vehicle:
     reference_area_override: null
   mass_properties:
     method: measured
-    mass_without_motor: 17.003
-    center_of_mass_without_motor: 1.285
+    mass_without_motor: 17.186
+    center_of_mass_without_motor: 1.282
     inertia:
       I11: 5.38
       I22: 5.38
@@ -68,7 +68,7 @@ vehicle:
     enabled: true
     type: trapezoidal
     number: 4
-    position: 2.494
+    position: 2.495
     root_chord: 0.3
     tip_chord: 0.075
     span: 0.17
@@ -158,4 +158,4 @@ vehicle:
     top_diameter: 0.156
     bottom_diameter: 0.1
     length: 0.198
-    position: 2.684
+    position: 2.694

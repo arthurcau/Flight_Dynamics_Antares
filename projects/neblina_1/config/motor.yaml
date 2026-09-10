@@ -1,7 +1,6 @@
 motor:
   type: solid
-  thrust_source: motors/Yaripo.eng
-  burn_time: 3.0
+  thrust_source: motors/Yaripo_teste_est_2_2.eng
   dry_mass: 8.416
   dry_inertia:
   - 0.54060753
