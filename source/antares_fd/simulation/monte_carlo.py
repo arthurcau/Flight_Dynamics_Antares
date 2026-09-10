@@ -57,13 +57,15 @@ def execute_monte_carlo(config, project_dir):
         print(f"[MAGI-Stochastic] Computed Ensemble variance: std_x={wind_x_std:.2f}, std_y={wind_y_std:.2f}")
 
     # Fallback to config if ensemble is disabled
-    user_wx_std = config.environment.get("wind_velocity_x_factor_std", None)
+    env_cfg = mc_cfg.get("environment", {})
+    user_wx_std = env_cfg.get("wind_velocity_x", {}).get("factor_std", 0.0)
+    user_wy_std = env_cfg.get("wind_velocity_y", {}).get("factor_std", 0.0)
     
     stoch_env = StochasticEnvironment(
         environment=nominal_env,
-        wind_velocity_x_factor=(1.0, (wind_x_std/3.0) if wind_x_std > 0 else (user_wx_std or 0.0)),
-        wind_velocity_y_factor=(1.0, (wind_y_std/3.0) if wind_y_std > 0 else (user_wx_std or 0.0)),
-        elevation=config.environment.get("elevation_std", None)
+        wind_velocity_x_factor=(1.0, (wind_x_std/3.0) if wind_x_std > 0 else user_wx_std),
+        wind_velocity_y_factor=(1.0, (wind_y_std/3.0) if wind_y_std > 0 else user_wy_std),
+        elevation=env_cfg.get("elevation", {}).get("std", None)
     )
     # 2. Motor
     motor = build_motor(config.motor, project_dir)
@@ -91,6 +93,28 @@ def execute_monte_carlo(config, project_dir):
         power_on_drag_factor=(1.0, drag_on_std) if drag_on_std else None,
     )
     stoch_rocket.add_motor(stoch_motor, position=rocket.motor_position)
+
+    # Transfer aero surfaces and parachutes to stochastic rocket
+    from rocketpy.rocket.aero_surface import NoseCone, TrapezoidalFins, EllipticalFins, Tail
+    from rocketpy.stochastic import StochasticNoseCone, StochasticTrapezoidalFins, StochasticEllipticalFins, StochasticTail, StochasticParachute, StochasticRailButtons
+    for surface_tuple in rocket.aerodynamic_surfaces:
+        surface = surface_tuple.component
+        pos = surface_tuple.position[2]
+        if isinstance(surface, NoseCone):
+            stoch_rocket.add_nose(StochasticNoseCone(surface), position=pos)
+        elif isinstance(surface, TrapezoidalFins):
+            stoch_rocket.add_trapezoidal_fins(StochasticTrapezoidalFins(surface), position=pos)
+        elif isinstance(surface, EllipticalFins):
+            stoch_rocket.add_elliptical_fins(StochasticEllipticalFins(surface), position=pos)
+        elif isinstance(surface, Tail):
+            stoch_rocket.add_tail(StochasticTail(surface), position=pos)
+    
+    for rb_tuple in rocket.rail_buttons:
+        stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=rb_tuple.position[2])
+        
+    for parachute in rocket.parachutes:
+        stoch_rocket.add_parachute(StochasticParachute(parachute))
+
 
     # 4. Flight
     flight = Flight(rocket, nominal_env, rail_length=config.launch.get("rail_length", 5.2), inclination=config.launch.get("inclination", 85.0), heading=config.launch.get("heading", 0.0))
