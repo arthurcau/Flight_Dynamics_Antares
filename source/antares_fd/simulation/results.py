@@ -102,5 +102,12 @@ def print_flight_summary(flight, project_dir=None):
             yaml.dump(manifest, f, default_flow_style=False)
             
         print(f"[Manifest] Traceability data saved to: {results_dir / 'manifest.yaml'}")
+        
+        # Export comprehensive telemetry plots
+        try:
+            from antares_fd.simulation.plotters import export_nominal_flight_plots
+            export_nominal_flight_plots(flight, results_dir, project_dir.name)
+        except Exception as e:
+            print(f"[Telemetry Plots Failed] {e}")
 
     print("\n")
