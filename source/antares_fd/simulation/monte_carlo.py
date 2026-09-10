@@ -10,6 +10,23 @@ from antares_fd.config.exceptions import ConfigurationError
 
 from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
 
+# --- Monkey Patch for RocketPy StochasticTrapezoidalFins Bug ---
+from rocketpy.rocket.aero_surface.fins.trapezoidal_fins import TrapezoidalFins
+_orig_init = TrapezoidalFins.__init__
+
+def _patched_init(self, *args, **kwargs):
+    if "sweep_length" in kwargs and "sweep_angle" in kwargs:
+        if kwargs["sweep_length"] is None:
+            del kwargs["sweep_length"]
+        elif kwargs["sweep_angle"] is None:
+            del kwargs["sweep_angle"]
+        else:
+            del kwargs["sweep_length"]
+    _orig_init(self, *args, **kwargs)
+
+TrapezoidalFins.__init__ = _patched_init
+# ---------------------------------------------------------------
+
 def execute_monte_carlo(config, project_dir):
     """
     Central orchestrator for Monte Carlo campaigns.

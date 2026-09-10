@@ -7,6 +7,8 @@ from pathlib import Path
 # Fix python path for template (although PIP install -e . makes it unnecessary, keep for backwards compatibility)
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = PROJECT_DIR.parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "source"))
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from antares_fd.config.loader import load_project_config
 from antares_fd.simulation.monte_carlo import execute_monte_carlo

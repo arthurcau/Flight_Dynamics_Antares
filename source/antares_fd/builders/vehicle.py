@@ -135,17 +135,21 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
                 for field in ["root_chord", "tip_chord", "span"]:
                     if f.get(field) is None:
                         raise ConfigurationError(f"vehicle.fin_sets (trapezoidal) requires {field}")
-                rocket.add_trapezoidal_fins(
-                    n=n,
-                    root_chord=f.get("root_chord"),
-                    tip_chord=f.get("tip_chord"),
-                    span=f.get("span"),
-                    position=pos,
-                    cant_angle=f.get("cant_angle_deg", 0.0),
-                    sweep_length=f.get("sweep_length"),
-                    sweep_angle=f.get("sweep_angle_deg"),
-                    radius=radius
-                )
+                fin_kwargs = {
+                    "n": n,
+                    "root_chord": f.get("root_chord"),
+                    "tip_chord": f.get("tip_chord"),
+                    "span": f.get("span"),
+                    "position": pos,
+                    "cant_angle": f.get("cant_angle_deg", 0.0),
+                    "radius": radius
+                }
+                if f.get("sweep_length") is not None:
+                    fin_kwargs["sweep_length"] = f.get("sweep_length")
+                if f.get("sweep_angle_deg") is not None:
+                    fin_kwargs["sweep_angle"] = f.get("sweep_angle_deg")
+                    
+                rocket.add_trapezoidal_fins(**fin_kwargs)
             elif ftype == "elliptical":
                 for field in ["root_chord", "span"]:
                     if f.get(field) is None:
