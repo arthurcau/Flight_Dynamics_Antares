@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SOURCE_DIR = PROJECT_ROOT / "source"
 if str(SOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(SOURCE_DIR))
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from antares_fd.config import load_project_config
 from antares_fd.simulation import execute_scenario

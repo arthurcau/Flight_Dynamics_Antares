@@ -53,7 +53,7 @@ def print_flight_summary(flight, project_dir=None):
             
         # Export PDF Map
         try:
-            from staticmap import StaticMap, Line
+            from staticmap import StaticMap, Line, CircleMarker
             
             # Extract coordinates from RocketPy Flight Function arrays
             lats = flight.latitude[:, 1]
@@ -64,6 +64,10 @@ def print_flight_summary(flight, project_dir=None):
                 m = StaticMap(1000, 1000)
                 line = Line(coords, 'red', 3)
                 m.add_line(line)
+                
+                # Add launchpad marker
+                launchpad = CircleMarker((lons[0], lats[0]), 'black', 8)
+                m.add_marker(launchpad)
                 
                 output_pdf = results_dir / f"{project_dir.name}_{script_name}.pdf"
                 img = m.render()
@@ -106,7 +110,7 @@ def print_flight_summary(flight, project_dir=None):
         # Export comprehensive telemetry plots
         try:
             from antares_fd.simulation.plotters import export_nominal_flight_plots
-            export_nominal_flight_plots(flight, results_dir, project_dir.name)
+            export_nominal_flight_plots(flight, results_dir, project_dir.name, script_name)
         except Exception as e:
             print(f"[Telemetry Plots Failed] {e}")
 

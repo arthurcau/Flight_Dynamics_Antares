@@ -144,22 +144,41 @@ def euler_from_quaternion(e0, e1, e2, e3):
     return roll_x, pitch_y, yaw_z
 
 
-def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
+def export_nominal_flight_plots(flight, results_dir: Path, project_name: str, scenario_name: str = "nominal"):
     """
     Exports nominal flight data to multiple PDF charts:
     - 3D Isometric Trajectory
+    - Top-Down 2D Trajectory
+    - Side Views (X-Z and Y-Z)
     - Stability margin vs Time
     - Acceleration vs Time
     - Pitch, Roll, Yaw vs Time
     - Angle of Attack vs Time
     - Mach vs Time
     """
-    print("Generating comprehensive flight telemetry plots...")
+    print(f"Generating comprehensive flight telemetry plots for scenario: {scenario_name}...")
     
-    pdf_path = results_dir / f"{project_name}_telemetry_plots.pdf"
+    pdf_path = results_dir / f"{project_name}_{scenario_name}_telemetry_plots.pdf"
     pdf = matplotlib.backends.backend_pdf.PdfPages(pdf_path)
     
     try:
+        events = []
+        events.append((0, "Launch"))
+        events.append((flight.out_of_rail_time, "Liftoff"))
+        events.append((flight.rocket.motor.burn_out_time, "Burnout"))
+        events.append((flight.apogee_time, "Apogee"))
+        for t_event, p_event in flight.parachute_events:
+            events.append((t_event, f"{p_event.name} Trigger"))
+            events.append((t_event + p_event.lag, f"{p_event.name} Open"))
+
+        def add_event_markers(ax):
+            max_t = ax.get_xlim()[1]
+            y_min, y_max = ax.get_ylim()
+            for t, label in events:
+                if t > max_t: continue
+                ax.axvline(x=t, color='grey', linestyle='--', alpha=0.6, linewidth=1)
+                ax.text(t, y_min + 0.95*(y_max - y_min), f" {label}", rotation=90, va='top', ha='left', fontsize=8, color='grey')
+
         t = flight.z[:, 0]
         x = flight.x[:, 1]
         y = flight.y[:, 1]
@@ -172,28 +191,65 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
         ax.set_xlabel('East (m)')
         ax.set_ylabel('North (m)')
         ax.set_zlabel('Altitude AGL (m)')
-        ax.set_title("3D Isometric Trajectory")
+        ax.set_title(f"[{scenario_name}] 3D Isometric Trajectory")
         
-        # Highlight apogee
+        # Highlight apogee and launchpad
         apogee_idx = np.argmax(z)
         ax.scatter(x[apogee_idx], y[apogee_idx], z[apogee_idx], color='blue', s=50, label='Apogee')
+        ax.scatter(x[0], y[0], z[0], color='black', marker='*', s=100, label='Launchpad')
         ax.legend()
         pdf.savefig(fig)
         plt.close(fig)
+        # 1.1 Top-Down 2D Trajectory (X-Y)
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.plot(x, y, label='Trajectory', color='r', linewidth=2)
+        ax.scatter(x[apogee_idx], y[apogee_idx], color='blue', s=50, label='Apogee')
+        ax.scatter(x[0], y[0], color='black', marker='*', s=150, label='Launchpad')
+        ax.set_xlabel('East (m)')
+        ax.set_ylabel('North (m)')
+        ax.set_title(f"[{scenario_name}] Top-Down Trajectory (X-Y Plane)")
+        ax.axis('equal')
+        ax.grid(True)
+        ax.legend()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # 1.2 Side Views (X-Z and Y-Z)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        ax1.plot(x, z, color='r', linewidth=2)
+        ax1.scatter(x[apogee_idx], z[apogee_idx], color='blue', s=50, label='Apogee')
+        ax1.scatter(x[0], z[0], color='black', marker='*', s=150, label='Launchpad')
+        ax1.set_xlabel('East (m)')
+        ax1.set_ylabel('Altitude AGL (m)')
+        ax1.set_title(f"[{scenario_name}] Side View (East-Altitude)")
+        ax1.grid(True)
+        ax1.legend()
         
+        ax2.plot(y, z, color='r', linewidth=2)
+        ax2.scatter(y[apogee_idx], z[apogee_idx], color='blue', s=50, label='Apogee')
+        ax2.scatter(y[0], z[0], color='black', marker='*', s=150, label='Launchpad')
+        ax2.set_xlabel('North (m)')
+        ax2.set_ylabel('Altitude AGL (m)')
+        ax2.set_title(f"[{scenario_name}] Side View (North-Altitude)")
+        ax2.grid(True)
+        ax2.legend()
+        pdf.savefig(fig)
+        plt.close(fig)
+
         # 2. Stability Margin vs Time
         fig, ax = plt.subplots(figsize=(10, 6))
         # RocketPy static margin might be only up to apogee or full.
         t_sm = flight.static_margin[:, 0]
         sm = flight.static_margin[:, 1]
         ax.plot(t_sm, sm, color='green')
-        ax.set_title("Static Margin vs Time")
+        ax.set_title(f"[{scenario_name}] Static Margin vs Time")
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Static Margin (cal)")
         ax.grid(True)
         # Limit to motor burnout or a bit after, since it diverges after apogee
         t_apogee = flight.apogee_time
         ax.set_xlim(0, t_apogee * 1.5)
+        add_event_markers(ax)
         pdf.savefig(fig)
         plt.close(fig)
         
@@ -226,7 +282,8 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
         ax3.tick_params(axis='y', labelcolor=color3)
         
         fig.tight_layout()
-        plt.title("Acceleration, Velocity & Mach vs Time")
+        plt.title(f"[{scenario_name}] Acceleration, Velocity & Mach vs Time")
+        add_event_markers(ax1)
         pdf.savefig(fig)
         plt.close(fig)
 
@@ -239,12 +296,13 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
         a_tot = np.sqrt(ax_val**2 + ay_val**2 + az_val**2)
         ax.plot(t_a, a_tot, label='Total Acceleration', color='purple')
         ax.plot(t_a, az_val, label='Vertical Acceleration (Z)', color='orange', alpha=0.7)
-        ax.set_title("Acceleration vs Time")
+        ax.set_title(f"[{scenario_name}] Acceleration vs Time")
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Acceleration (m/s²)")
         ax.set_xlim(0, t_apogee * 1.5)
         ax.grid(True)
         ax.legend()
+        add_event_markers(ax)
         pdf.savefig(fig)
         plt.close(fig)
         
@@ -259,12 +317,13 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
         ax.plot(t_e, pitch, label='Pitch', color='blue')
         ax.plot(t_e, roll, label='Roll', color='red')
         ax.plot(t_e, yaw, label='Yaw', color='green')
-        ax.set_title("Euler Angles vs Time")
+        ax.set_title(f"[{scenario_name}] Euler Angles vs Time")
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Angle (degrees)")
         ax.set_xlim(0, t_apogee)
         ax.grid(True)
         ax.legend()
+        add_event_markers(ax)
         pdf.savefig(fig)
         plt.close(fig)
         
@@ -273,11 +332,12 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
         t_alpha = flight.angle_of_attack[:, 0]
         alpha = flight.angle_of_attack[:, 1]
         ax.plot(t_alpha, alpha, color='crimson')
-        ax.set_title("Angle of Attack vs Time")
+        ax.set_title(f"[{scenario_name}] Angle of Attack vs Time")
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Angle of Attack (degrees)")
         ax.set_xlim(0, t_apogee)
         ax.grid(True)
+        add_event_markers(ax)
         pdf.savefig(fig)
         plt.close(fig)
         
@@ -286,11 +346,12 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str):
         t_mach = flight.mach_number[:, 0]
         mach = flight.mach_number[:, 1]
         ax.plot(t_mach, mach, color='teal')
-        ax.set_title("Mach Number vs Time")
+        ax.set_title(f"[{scenario_name}] Mach Number vs Time")
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Mach Number")
         ax.set_xlim(0, t_apogee * 1.2)
         ax.grid(True)
+        add_event_markers(ax)
         pdf.savefig(fig)
         plt.close(fig)
 
