@@ -1,0 +1,6 @@
+environment:
+  type: MAGI
+  target_date: '2027-09-03T14:30:00Z'
+  fallback:
+    enabled: true
+    type: standard_atmosphere

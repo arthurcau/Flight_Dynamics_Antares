@@ -49,7 +49,9 @@ def print_flight_summary(flight, project_dir=None):
                 line = Line(coords, 'red', 3)
                 m.add_line(line)
                 
-                output_pdf = project_dir / "trajectory_map.pdf"
+                import sys
+                script_name = Path(sys.argv[0]).stem
+                output_pdf = project_dir / f"{project_dir.name}_{script_name}.pdf"
                 img = m.render()
                 img.save(str(output_pdf), "PDF", resolution=100.0)
                 print(f"[PDF Export] Map trajectory saved to: {output_pdf}")

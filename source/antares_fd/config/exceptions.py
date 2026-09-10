@@ -1,3 +1,7 @@
 class ConfigurationError(Exception):
-    """Raised when a physical parameter is missing or improperly configured."""
+    """Base class for configuration errors."""
+    pass
+
+class AtmosphereUnavailableError(ConfigurationError):
+    """Raised when the requested atmospheric source is unavailable."""
     pass

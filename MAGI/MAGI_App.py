@@ -30,13 +30,13 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Import MAGI Subsystems
-from melchior import Melchior, MelchiorVisuals
-from balthasar import Balthasar, BalthasarVisuals
-from casper import CasperProcessor, CasperVisuals, CasperPhysics, MagiSchema
-from state_manager import StateManager
+from MAGI.melchior import Melchior, MelchiorVisuals
+from MAGI.balthasar import Balthasar, BalthasarVisuals
+from MAGI.casper import CasperProcessor, CasperVisuals, CasperPhysics, MagiSchema
+from MAGI.state_manager import StateManager
 from scoring import AtmosphericScoring
-from exporter import NetCDFExporter
-from visuals import CasperVisualsV3, VisualManager
+from MAGI.exporter import NetCDFExporter
+from MAGI.visuals import CasperVisualsV3, VisualManager
 
 # Global Configuration
 ELEVATION_MSL = 450

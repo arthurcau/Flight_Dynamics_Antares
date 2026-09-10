@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 import requests
 
-from casper import MagiSchema, CasperPhysics
+from MAGI.casper import MagiSchema, CasperPhysics
 
 class Balthasar:
     """

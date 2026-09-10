@@ -32,7 +32,7 @@ echo "[2/3] Atualizando o instalador (pip) interno..."
 ./.venv/bin/python -m pip install --upgrade pip > /dev/null 2>&1
 
 echo "[3/3] Instalando bibliotecas obrigatórias (RocketPy, PyYAML, Staticmap)..."
-if ./.venv/bin/pip install -r requirements.txt; then
+if ./.venv/bin/pip install -r requirements.txt && ./.venv/bin/pip install -e .; then
     echo ""
     echo "========================================================"
     echo " TUDO PRONTO! O ambiente foi configurado com sucesso."

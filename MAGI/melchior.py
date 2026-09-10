@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.covariance import LedoitWolf
 
-from casper import MagiSchema, CasperPhysics
+from MAGI.casper import MagiSchema, CasperPhysics
 
 class Melchior:
     def __init__(self, cache_dir="dados_cache", elevation_msl=450):
@@ -167,7 +167,7 @@ class Melchior:
             return pd.DataFrame()
             
         from scipy.interpolate import interp1d
-        from casper import CasperPhysics
+        from MAGI.casper import CasperPhysics
         
         # 1. Convert all profiles to the common vertical grid first
         interpolated_profiles = []
