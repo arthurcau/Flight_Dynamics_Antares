@@ -7,7 +7,7 @@ import matplotlib.backends.backend_pdf
 
 from .statistics import calculate_covariance_ellipse
 
-def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str):
+def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str, nominal_flight=None, all_flights=None):
     """
     Parses outputs JSONL file to plot the 2D landing dispersion with probability ellipses.
     """
@@ -37,7 +37,32 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
         return
 
     plt.figure(figsize=(10, 10))
-    plt.scatter(x, y, s=5, alpha=0.5, label='Simulated Impacts', color='blue')
+    
+    # Plot extreme trajectories first (so they are in the background)
+    if all_flights and len(all_flights) == len(x):
+        try:
+            idx_max_x = np.argmax(x)
+            idx_min_x = np.argmin(x)
+            idx_max_y = np.argmax(y)
+            idx_min_y = np.argmin(y)
+            extreme_indices = list(set([idx_max_x, idx_min_x, idx_max_y, idx_min_y]))
+            
+            for i, idx in enumerate(extreme_indices):
+                flt = all_flights[idx]
+                label = 'Extreme Trajectories' if i == 0 else None
+                plt.plot(flt.x[:, 1], flt.y[:, 1], color='red', linestyle='--', linewidth=1, label=label, alpha=0.5)
+        except Exception as e:
+            print(f"[Monte Carlo] Failed to plot extreme trajectories: {e}")
+
+    # Plot nominal trajectory
+    if nominal_flight is not None:
+        try:
+            plt.plot(nominal_flight.x[:, 1], nominal_flight.y[:, 1], color='black', linewidth=2, label='Nominal Trajectory', zorder=5)
+            plt.scatter([nominal_flight.x[:, 1][-1]], [nominal_flight.y[:, 1][-1]], color='black', marker='*', s=150, label='Nominal Impact', zorder=6)
+        except Exception as e:
+            print(f"[Monte Carlo] Failed to plot nominal trajectory: {e}")
+
+    plt.scatter(x, y, s=15, alpha=0.7, label='Simulated Impacts', color='blue', zorder=4)
     
     probabilities = {
         50: 0.50,

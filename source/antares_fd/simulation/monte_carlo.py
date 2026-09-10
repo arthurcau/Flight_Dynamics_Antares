@@ -163,6 +163,17 @@ def execute_monte_carlo(config, project_dir):
         export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
     )
     
+    # --- Capture all flights ---
+    all_flights = []
+    _orig_run_single = mc._MonteCarlo__run_single_simulation
+    def _patched_run_single(*args, **kwargs):
+        flt = _orig_run_single(*args, **kwargs)
+        all_flights.append(flt)
+        return flt
+    mc._MonteCarlo__run_single_simulation = _patched_run_single
+    # ---------------------------
+    
+    
     mc.simulate(number_of_simulations=num_sims, append=False)
     
     # 7. Write Manifest and Traceability
@@ -202,6 +213,6 @@ def execute_monte_carlo(config, project_dir):
     from antares_fd.simulation.plotters import plot_monte_carlo_dispersion
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists():
-        plot_monte_carlo_dispersion(outputs_file, results_dir, run_id)
+        plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, all_flights=all_flights)
         
     return mc
