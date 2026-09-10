@@ -92,7 +92,7 @@ def execute_monte_carlo(config, project_dir):
         power_off_drag_factor=(1.0, drag_off_std) if drag_off_std else None,
         power_on_drag_factor=(1.0, drag_on_std) if drag_on_std else None,
     )
-    stoch_rocket.add_motor(stoch_motor, position=rocket.motor_position)
+    stoch_rocket.add_motor(stoch_motor, position=(rocket.motor_position, 0.0))
 
     # Transfer aero surfaces and parachutes to stochastic rocket
     from rocketpy.rocket.aero_surface import NoseCone, TrapezoidalFins, EllipticalFins, Tail
@@ -101,16 +101,16 @@ def execute_monte_carlo(config, project_dir):
         surface = surface_tuple.component
         pos = surface_tuple.position[2]
         if isinstance(surface, NoseCone):
-            stoch_rocket.add_nose(StochasticNoseCone(surface), position=pos)
+            stoch_rocket.add_nose(StochasticNoseCone(surface), position=(pos, 0.0))
         elif isinstance(surface, TrapezoidalFins):
-            stoch_rocket.add_trapezoidal_fins(StochasticTrapezoidalFins(surface), position=pos)
+            stoch_rocket.add_trapezoidal_fins(StochasticTrapezoidalFins(surface), position=(pos, 0.0))
         elif isinstance(surface, EllipticalFins):
-            stoch_rocket.add_elliptical_fins(StochasticEllipticalFins(surface), position=pos)
+            stoch_rocket.add_elliptical_fins(StochasticEllipticalFins(surface), position=(pos, 0.0))
         elif isinstance(surface, Tail):
-            stoch_rocket.add_tail(StochasticTail(surface), position=pos)
+            stoch_rocket.add_tail(StochasticTail(surface), position=(pos, 0.0))
     
     for rb_tuple in rocket.rail_buttons:
-        stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=rb_tuple.position[2])
+        stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=(rb_tuple.position[2], 0.0))
         
     for parachute in rocket.parachutes:
         stoch_rocket.add_parachute(StochasticParachute(parachute))
