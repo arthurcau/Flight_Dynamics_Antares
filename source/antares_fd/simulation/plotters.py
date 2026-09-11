@@ -48,9 +48,9 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
             extreme_indices = list(set([idx_max_x, idx_min_x, idx_max_y, idx_min_y]))
             
             for i, idx in enumerate(extreme_indices):
-                flt = all_flights[idx]
+                flt_data = all_flights[idx]
                 label = 'Extreme Trajectories' if i == 0 else None
-                plt.plot(flt.x[:, 1], flt.y[:, 1], color='red', linestyle='--', linewidth=1, label=label, alpha=0.5)
+                plt.plot(flt_data['x'], flt_data['y'], color='red', linestyle='--', linewidth=1, label=label, alpha=0.5)
         except Exception as e:
             print(f"[Monte Carlo] Failed to plot extreme trajectories: {e}")
 

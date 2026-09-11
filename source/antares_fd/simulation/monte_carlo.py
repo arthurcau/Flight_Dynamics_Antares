@@ -162,19 +162,28 @@ def execute_monte_carlo(config, project_dir):
         flight=stoch_flight,
         export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
     )
+    # --- Capture all flights via Multiprocess Manager ---
+    import multiprocess
+    manager = multiprocess.Manager()
+    all_flights = manager.list()
     
-    # --- Capture all flights ---
-    all_flights = []
     _orig_run_single = mc._MonteCarlo__run_single_simulation
     def _patched_run_single(*args, **kwargs):
         flt = _orig_run_single(*args, **kwargs)
-        all_flights.append(flt)
+        try:
+            # We only extract what's needed for plotting to avoid pickle issues over IPC
+            flt_data = {
+                'x': flt.x[:, 1],
+                'y': flt.y[:, 1]
+            }
+            all_flights.append(flt_data)
+        except Exception:
+            pass
         return flt
     mc._MonteCarlo__run_single_simulation = _patched_run_single
-    # ---------------------------
+    # -------------------------------------------------------
     
-    
-    mc.simulate(number_of_simulations=num_sims, append=False)
+    mc.simulate(number_of_simulations=num_sims, append=False, parallel=True)
     
     # 7. Write Manifest and Traceability
     try:
