@@ -118,7 +118,20 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     
     plt.xlabel("East / x (m)")
     plt.ylabel("North / y (m)")
-    plt.title(f"Ground Dispersion Analysis\nRun: {run_id}")
+    title_suffix = ""
+    if nominal_flight is not None and hasattr(nominal_flight, 'env'):
+        env = nominal_flight.env
+        d = getattr(env, 'date', getattr(env, 'datetime_date', None))
+        if isinstance(d, tuple) and len(d) >= 5:
+            title_suffix += f"\nDate: {d[0]:04d}-{d[1]:02d}-{d[2]:02d} {d[3]:02d}:{d[4]:02d}"
+        try:
+            wd = float(env.wind_direction(10))
+            ws = float((env.wind_velocity_x(10)**2 + env.wind_velocity_y(10)**2)**0.5)
+            title_suffix += f" | Wind (10m): {ws:.1f} m/s @ {wd:.1f}°"
+        except Exception:
+            pass
+            
+    plt.title(f"Ground Dispersion Analysis\nRun: {run_id}{title_suffix}")
     plt.axis('equal')
     plt.grid(True, linestyle='--', alpha=0.7)
     
@@ -179,7 +192,7 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     ax_3d.set_xlabel("East / x (m)")
     ax_3d.set_ylabel("North / y (m)")
     ax_3d.set_zlabel("Altitude / z (m)")
-    ax_3d.set_title(f"3D Isometric Dispersion Analysis\nRun: {run_id}")
+    ax_3d.set_title(f"3D Isometric Dispersion Analysis\nRun: {run_id}{title_suffix}")
     
     if 'neblina_1' in str(results_dir):
         ax_3d.scatter(x_nose, y_nose, 0, marker='X', color='darkred', s=150, zorder=10, edgecolors='black', label='Nose Cone Landing Site')

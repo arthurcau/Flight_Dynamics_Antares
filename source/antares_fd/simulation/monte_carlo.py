@@ -74,20 +74,20 @@ def execute_monte_carlo(config, project_dir):
         print(f"[MAGI-Stochastic] Computed Ensemble variance: std_x={wind_x_std:.2f}, std_y={wind_y_std:.2f}")
 
     # Fallback to config if ensemble is disabled
-    env_cfg = mc_cfg.get("environment", {})
-    user_wx_std = env_cfg.get("wind_velocity_x", {}).get("factor_std", 0.0)
-    user_wy_std = env_cfg.get("wind_velocity_y", {}).get("factor_std", 0.0)
+    env_cfg = mc_cfg.get("environment") or {}
+    user_wx_std = (env_cfg.get("wind_velocity_x") or {}).get("factor_std", 0.0)
+    user_wy_std = (env_cfg.get("wind_velocity_y") or {}).get("factor_std", 0.0)
     
     stoch_env = StochasticEnvironment(
         environment=nominal_env,
         wind_velocity_x_factor=(1.0, (wind_x_std/3.0) if wind_x_std > 0 else user_wx_std),
         wind_velocity_y_factor=(1.0, (wind_y_std/3.0) if wind_y_std > 0 else user_wy_std),
-        elevation=env_cfg.get("elevation", {}).get("std", None)
+        elevation=(env_cfg.get("elevation") or {}).get("std", None)
     )
     # 2. Motor
     motor = build_motor(config.motor, project_dir)
-    mot_cfg = mc_cfg.get("motor", {})
-    imp_std_factor = mot_cfg.get("total_impulse_scale", {}).get("std", 0.0)
+    mot_cfg = mc_cfg.get("motor") or {}
+    imp_std_factor = (mot_cfg.get("total_impulse_scale") or {}).get("std", 0.0)
     
     stoch_motor = StochasticSolidMotor(
         motor,
@@ -98,10 +98,10 @@ def execute_monte_carlo(config, project_dir):
     rocket = build_vehicle(config.vehicle, motor, project_dir)
     add_recovery_system(rocket, config.recovery)
     
-    veh_cfg = mc_cfg.get("vehicle", {})
-    mass_std = veh_cfg.get("mass", {}).get("std", 0.0)
-    drag_off_std = veh_cfg.get("power_off_drag_factor", {}).get("std", 0.0)
-    drag_on_std = veh_cfg.get("power_on_drag_factor", {}).get("std", 0.0)
+    veh_cfg = mc_cfg.get("vehicle") or {}
+    mass_std = (veh_cfg.get("mass") or {}).get("std", 0.0)
+    drag_off_std = (veh_cfg.get("power_off_drag_factor") or {}).get("std", 0.0)
+    drag_on_std = (veh_cfg.get("power_on_drag_factor") or {}).get("std", 0.0)
 
     stoch_rocket = StochasticRocket(
         rocket,
@@ -133,14 +133,14 @@ def execute_monte_carlo(config, project_dir):
         stoch_rocket.add_parachute(StochasticParachute(parachute))
 
 
-    rail_len = config.launch.get("rail", {}).get("length", 5.2)
-    inc = config.launch.get("rail", {}).get("inclination_deg", 85.0)
-    hdg = config.launch.get("rail", {}).get("heading_deg", 0.0)
+    rail_len = (config.launch.get("rail") or {}).get("length", 5.2)
+    inc = (config.launch.get("rail") or {}).get("inclination_deg", 85.0)
+    hdg = (config.launch.get("rail") or {}).get("heading_deg", 0.0)
 
     flight = Flight(rocket, nominal_env, rail_length=rail_len, inclination=inc, heading=hdg)
-    flt_cfg = mc_cfg.get("flight", {})
-    inc_std = flt_cfg.get("inclination", {}).get("std", 0.0)
-    hdg_std = flt_cfg.get("heading", {}).get("std", 0.0)
+    flt_cfg = mc_cfg.get("flight") or {}
+    inc_std = (flt_cfg.get("inclination") or {}).get("std", 0.0)
+    hdg_std = (flt_cfg.get("heading") or {}).get("std", 0.0)
 
     stoch_flight = StochasticFlight(
         flight,
@@ -226,5 +226,12 @@ def execute_monte_carlo(config, project_dir):
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists():
         plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, all_flights=all_flights)
-        
+
+    # 9. Generate LaTeX PDF Report
+    try:
+        from antares_fd.simulation.report import generate_latex_report
+        generate_latex_report(config, results_dir, run_id)
+    except Exception as e:
+        print(f"[Report] Failed to generate LaTeX report: {e}")
+
     return mc

@@ -1,20 +1,87 @@
 monte_carlo:
-  num_simulations: 5
+  num_simulations: 10
   flight:
     inclination:
-      std: 1.0
+      std: 1.0 # Desvio padrão da inclinação da rampa em graus
     heading:
-      std: 5.0
+      std: 5.0 # Desvio padrão do azimute (heading) da rampa em graus
+    # rail_length:
+    #   std: 0.1 # Desvio padrão do comprimento da rampa em metros
   environment:
     wind_velocity_x:
       std: 1.0 # Standard deviation in m/s (equivalent to wind factor if mean is 0, but usually we use factor)
       factor_std: 0.2 # We will multiply the deterministic wind by (1 + N(0, 0.2))
     wind_velocity_y:
-      factor_std: 0.2
+      factor_std: 0.2 # We will multiply the deterministic wind by (1 + N(0, 0.2))
+    # elevation:
+    #   std: 10.0 # Desvio padrão da elevação do local de lançamento em metros
+    # gravity:
+    #   std: 0.01 # Desvio padrão da aceleração da gravidade em m/s^2
+    # latitude:
+    #   std: 0.0001 # Desvio padrão da latitude em graus
+    # longitude:
+    #   std: 0.0001 # Desvio padrão da longitude em graus
+  motor:
+    # total_impulse_scale:
+    #   std: 0.05 # Fator de incerteza (std) para o impulso total (ex: 0.05 para 5% de variação)
+    # burn_start_time:
+    #   std: 0.1 # Desvio padrão do tempo de ignição em segundos
+    # burn_out_time:
+    #   std: 0.1 # Desvio padrão do tempo de fim de queima em segundos
+    # dry_mass:
+    #   std: 0.1 # Desvio padrão da massa seca do motor em kg
+    # dry_inertia_11:
+    #   std: 0.01 # Desvio padrão da inércia seca do motor (eixo x) em kg*m^2
+    # dry_inertia_22:
+    #   std: 0.01 # Desvio padrão da inércia seca do motor (eixo y) em kg*m^2
+    # dry_inertia_33:
+    #   std: 0.01 # Desvio padrão da inércia seca do motor (eixo z) em kg*m^2
+    # dry_inertia_12:
+    #   std: 0.001 # Desvio padrão da inércia seca xy do motor em kg*m^2
+    # dry_inertia_13:
+    #   std: 0.001 # Desvio padrão da inércia seca xz do motor em kg*m^2
+    # dry_inertia_23:
+    #   std: 0.001 # Desvio padrão da inércia seca yz do motor em kg*m^2
+    # nozzle_radius:
+    #   std: 0.001 # Desvio padrão do raio da tubeira em metros
+    # grain_density:
+    #   std: 5.0 # Desvio padrão da densidade do grão propelente em kg/m^3
+    # grain_outer_radius:
+    #   std: 0.001 # Desvio padrão do raio externo do grão em metros
+    # grain_initial_inner_radius:
+    #   std: 0.001 # Desvio padrão do raio interno inicial do grão em metros
+    # grain_initial_height:
+    #   std: 0.005 # Desvio padrão da altura inicial do grão em metros
+    # grain_separation:
+    #   std: 0.001 # Desvio padrão da separação entre grãos em metros
+    # grains_center_of_mass_position:
+    #   std: 0.01 # Desvio padrão da posição do CM dos grãos em metros
+    # center_of_dry_mass_position:
+    #   std: 0.01 # Desvio padrão da posição do CM da massa seca do motor em metros
+    # nozzle_position:
+    #   std: 0.005 # Desvio padrão da posição da tubeira em metros
+    # throat_radius:
+    #   std: 0.0005 # Desvio padrão do raio da garganta da tubeira em metros
   vehicle:
     mass:
-      std: 0.1 # kg
+      std: 0.1 # Desvio padrão da massa do foguete em kg
     power_off_drag_factor:
-      std: 0.1 # 10% uncertainty
+      std: 0.1 # 10% uncertainty no coeficiente de arrasto sem propulsão
     power_on_drag_factor:
-      std: 0.1 # 10% uncertainty
+      std: 0.1 # 10% uncertainty no coeficiente de arrasto com propulsão
+    # radius:
+    #   std: 0.005 # Desvio padrão do raio do foguete em metros
+    # inertia_11:
+    #   std: 0.1 # Desvio padrão da inércia do foguete (eixo x) em kg*m^2
+    # inertia_22:
+    #   std: 0.1 # Desvio padrão da inércia do foguete (eixo y) em kg*m^2
+    # inertia_33:
+    #   std: 0.1 # Desvio padrão da inércia do foguete (eixo z) em kg*m^2
+    # inertia_12:
+    #   std: 0.01 # Desvio padrão da inércia do foguete xy em kg*m^2
+    # inertia_13:
+    #   std: 0.01 # Desvio padrão da inércia do foguete xz em kg*m^2
+    # inertia_23:
+    #   std: 0.01 # Desvio padrão da inércia do foguete yz em kg*m^2
+    # center_of_mass_without_motor:
+    #   std: 0.05 # Desvio padrão da posição do centro de massa (sem motor) em metros

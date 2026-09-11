@@ -1,7 +1,9 @@
 environment:
-  type: MAGI
+  fallback:
+    enabled: false
+    type: standard_atmosphere
   target_date: '2026-09-03'
   target_time: '15:00:00'
-  fallback:
-    enabled: true
-    type: standard_atmosphere
+  time_step_minutes: 5
+  time_window_minutes: 60
+  type: MAGI

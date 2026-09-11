@@ -32,7 +32,7 @@ def _process_df_to_profile(df_nominal, elevation, latitude, longitude):
         member_id=df_nominal.get('ensemble_member', pd.Series(["control"])).iloc[0]
     )
 
-def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=None) -> list[AtmosphericProfile]:
+def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=None, time_window_minutes=120, time_step_minutes=10) -> list[AtmosphericProfile]:
     from MAGI.state_manager import StateManager
     from MAGI.balthasar import Balthasar
     from MAGI.casper import CasperProcessor
@@ -42,7 +42,7 @@ def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=Non
     
     state_mgr = StateManager(cache_dir=cache_dir)
     balthasar = Balthasar(cache_dir=cache_dir, elevation_msl=elevation)
-    forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str)
+    forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str, time_window_minutes, time_step_minutes)
     
     if forecast_result is None:
         raise ConfigurationError("MAGI failed to generate an atmospheric profile.")
@@ -55,7 +55,7 @@ def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=Non
         else:
             forecast_result['valid_time_utc'] = target_date
 
-    VERTICAL_GRID = np.arange(10, 6000 + 100, 100)
+    VERTICAL_GRID = np.arange(10, 6000 + 10, 10)
     casper = CasperProcessor(elevation_msl=elevation, surface_scenario="OPEN_TERRAIN")
     
     profiles = []
@@ -98,7 +98,7 @@ def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None
         else:
             forecast_result['valid_time_utc'] = target_date
 
-    VERTICAL_GRID = np.arange(10, 6000 + 100, 100)
+    VERTICAL_GRID = np.arange(10, 6000 + 10, 10)
     casper = CasperProcessor(elevation_msl=elevation, surface_scenario="OPEN_TERRAIN")
     
     if not is_real_ensemble:
