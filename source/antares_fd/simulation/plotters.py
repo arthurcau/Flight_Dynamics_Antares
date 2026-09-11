@@ -36,6 +36,14 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
         print("[Monte Carlo] All impacts are at the exact same location. Ellipse plot skipped.")
         return
 
+
+    # Get Launch Pad coordinates for KML and map
+    lat_pad = -21.938982
+    lon_pad = -48.950316
+    if nominal_flight is not None and hasattr(nominal_flight, 'env'):
+        lat_pad = nominal_flight.env.latitude
+        lon_pad = nominal_flight.env.longitude
+
     plt.figure(figsize=(10, 10))
     
     # Plot extreme trajectories first (so they are in the background)
@@ -87,6 +95,30 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
             print(f"[Monte Carlo] Failed to plot nominal trajectory: {e}")
     plt.scatter(x, y, s=15, alpha=0.7, label='Simulated Impacts', color='blue', zorder=4)
     
+
+    # Draw KDE Density Contours (Non-Linear Density Map)
+    try:
+        from scipy.stats import gaussian_kde
+        xy = np.vstack([x, y])
+        kde = gaussian_kde(xy)
+        
+        # Grid bounds
+        xmin, xmax = x.min() - 100, x.max() + 100
+        ymin, ymax = y.min() - 100, y.max() + 100
+        
+        # Determine appropriate grid spacing based on dispersion size
+        grid_pts = 100
+        X_grid, Y_grid = np.mgrid[xmin:xmax:complex(0, grid_pts), ymin:ymax:complex(0, grid_pts)]
+        positions = np.vstack([X_grid.ravel(), Y_grid.ravel()])
+        
+        Z_grid = np.reshape(kde(positions).T, X_grid.shape)
+        
+        # Plot filled contours underneath
+        cs = plt.contourf(X_grid, Y_grid, Z_grid, levels=7, cmap='Blues', alpha=0.3, zorder=1)
+        plt.contour(X_grid, Y_grid, Z_grid, levels=7, colors='blue', alpha=0.3, linewidths=0.5, zorder=2)
+    except Exception as e:
+        print(f"[Monte Carlo] KDE Contour Plot failed: {e}")
+
     probabilities = {
         50: 0.50,
         90: 0.90,
@@ -199,6 +231,142 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
         
     plt.legend()
     
+
+
+
+    # --- GENERATE INTERACTIVE FOLIUM HTML MAP WITH SATELLITE IMAGERY ---
+    try:
+        import folium
+        
+        # Initialize map at the launch pad
+        m = folium.Map(location=[lat_pad, lon_pad], zoom_start=14, tiles=None)
+        
+        # Add high-res satellite imagery from Esri
+        folium.TileLayer(
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri',
+            name='Esri World Imagery',
+            overlay=False,
+            control=True
+        ).add_to(m)
+        
+        # Add Launch Pad Marker
+        folium.Marker(
+            location=[lat_pad, lon_pad],
+            popup='Launch Pad',
+            icon=folium.Icon(color='black', icon='rocket', prefix='fa')
+        ).add_to(m)
+        
+        # Add Ellipses
+        hex_colors = ['green', 'orange', 'red', 'purple']
+        for (label, p), color in zip(probabilities.items(), hex_colors):
+            try:
+                ellipse_data = calculate_covariance_ellipse(x, y, p)
+                cx, cy = ellipse_data['center']
+                w, h = ellipse_data['width'], ellipse_data['height']
+                ang = np.radians(ellipse_data['angle'])
+                
+                t = np.linspace(0, 2*np.pi, 50)
+                x_ell = cx + (w/2)*np.cos(t)*np.cos(ang) - (h/2)*np.sin(t)*np.sin(ang)
+                y_ell = cy + (w/2)*np.cos(t)*np.sin(ang) + (h/2)*np.sin(t)*np.cos(ang)
+                
+                points = []
+                for ex, ey in zip(x_ell, y_ell):
+                    elat, elon = xy_to_latlon(ex, ey, lat_pad, lon_pad)
+                    points.append((elat, elon))
+                
+                folium.Polygon(
+                    locations=points,
+                    color=color,
+                    fill=True,
+                    fill_opacity=0.1,
+                    weight=2,
+                    tooltip=f'{label}% Containment'
+                ).add_to(m)
+            except Exception: pass
+            
+        # Add Simulated Impact Scatter
+        for ix, iy in zip(x, y):
+            ilat, ilon = xy_to_latlon(ix, iy, lat_pad, lon_pad)
+            folium.CircleMarker(
+                location=(ilat, ilon),
+                radius=1,
+                color='blue',
+                fill=True,
+                fill_opacity=0.5
+            ).add_to(m)
+            
+        # Add Real Landing Sites if Neblina
+        if 'neblina_1' in str(results_dir):
+            folium.Marker(
+                location=[lat_nose, lon_nose],
+                popup='Real Nose Cone Landing',
+                icon=folium.Icon(color='darkred', icon='info-sign')
+            ).add_to(m)
+            folium.Marker(
+                location=[lat_fuse, lon_fuse],
+                popup='Real Fuselage Landing',
+                icon=folium.Icon(color='orange', icon='info-sign')
+            ).add_to(m)
+            
+        html_path = results_dir / f"interactive_map_{run_id}.html"
+        m.save(str(html_path))
+        print(f"[Monte Carlo] Interactive Satellite Map (Folium) saved to {html_path}")
+    except ImportError:
+        print("[Monte Carlo] Folium not installed. Skipping interactive map.")
+    except Exception as e:
+        print(f"[Monte Carlo] Folium map generation failed: {e}")
+    # -------------------------------------------------------------------
+
+    # --- EXPORT KML FOR GOOGLE EARTH ---
+    try:
+        R_earth = 6378137.0
+        
+        def xy_to_latlon(px, py, ref_lat, ref_lon):
+            lat = ref_lat + np.degrees(py / R_earth)
+            lon = ref_lon + np.degrees(px / (R_earth * np.cos(np.radians(ref_lat))))
+            return lat, lon
+            
+        kml_path = results_dir / f"dispersion_{run_id}.kml"
+        with open(kml_path, 'w') as kml:
+            kml.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+            kml.write("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n")
+            kml.write("  <Document>\n")
+            kml.write(f"    <name>Monte Carlo Run: {run_id}</name>\n")
+            
+            # Write Ellipses as Polygons
+            for (label, p), color in zip(probabilities.items(), colors):
+                try:
+                    ellipse_data = calculate_covariance_ellipse(x, y, p)
+                    cx, cy = ellipse_data['center']
+                    w, h = ellipse_data['width'], ellipse_data['height']
+                    ang = np.radians(ellipse_data['angle'])
+                    
+                    t = np.linspace(0, 2*np.pi, 50)
+                    x_ell = cx + (w/2)*np.cos(t)*np.cos(ang) - (h/2)*np.sin(t)*np.sin(ang)
+                    y_ell = cy + (w/2)*np.cos(t)*np.sin(ang) + (h/2)*np.sin(t)*np.cos(ang)
+                    
+                    kml.write(f"    <Placemark>\n")
+                    kml.write(f"      <name>{label}% Containment</name>\n")
+                    kml.write(f"      <Style><LineStyle><color>ff0000ff</color><width>2</width></LineStyle><PolyStyle><fill>0</fill></PolyStyle></Style>\n")
+                    kml.write(f"      <Polygon><outerBoundaryIs><LinearRing><coordinates>\n")
+                    for ex, ey in zip(x_ell, y_ell):
+                        elat, elon = xy_to_latlon(ex, ey, lat_pad, lon_pad)
+                        kml.write(f"        {elon},{elat},0\n")
+                    # close ring
+                    elat, elon = xy_to_latlon(x_ell[0], y_ell[0], lat_pad, lon_pad)
+                    kml.write(f"        {elon},{elat},0\n")
+                    kml.write(f"      </coordinates></LinearRing></outerBoundaryIs></Polygon>\n")
+                    kml.write(f"    </Placemark>\n")
+                except Exception: pass
+                
+            kml.write("  </Document>\n")
+            kml.write("</kml>\n")
+            
+        print(f"[Monte Carlo] KML Exported to {kml_path} for Google Earth.")
+    except Exception as e:
+        print(f"[Monte Carlo] KML Export failed: {e}")
+    # -----------------------------------
 
     plot_path = results_dir / f"dispersion_plot_{run_id}.pdf"
     plt.savefig(plot_path, bbox_inches='tight')
