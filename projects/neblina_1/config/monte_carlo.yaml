@@ -1,5 +1,5 @@
 monte_carlo:
-  num_simulations: 1000
+  num_simulations: 2000
   flight:
     inclination:
       std: 1.0
