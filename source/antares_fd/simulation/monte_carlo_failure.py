@@ -213,11 +213,28 @@ def execute_monte_carlo(config, project_dir):
                 initial_solution=state_at_200,
                 terminate_on_apogee=False,
             )
-            x_full = np.concatenate((flt_nom.x[:idx_200+1, 1], flt_fail.x[:, 1]))
-            y_full = np.concatenate((flt_nom.y[:idx_200+1, 1], flt_fail.y[:, 1]))
-            z_full = np.concatenate((flt_nom.z[:idx_200+1, 1], flt_fail.z[:, 1]))
-            flt_data = {'x': x_full, 'y': y_full, 'z': z_full}
-            all_flights.append(flt_data)
+            try:
+                x_full = np.concatenate((flt_nom.x[:idx_200+1, 1], flt_fail.x[:, 1]))
+                y_full = np.concatenate((flt_nom.y[:idx_200+1, 1], flt_fail.y[:, 1]))
+                z_full = np.concatenate((flt_nom.z[:idx_200+1, 1], flt_fail.z[:, 1]))
+                flt_data = {'x': x_full, 'y': y_full, 'z': z_full}
+                all_flights.append(flt_data)
+            except Exception:
+                pass
+            
+            # Override flt_fail properties so Monte Carlo logs the full flight stats (apogee),
+            # not just the free-fall portion starting at 200m AGL.
+            try:
+                flt_fail.apogee = flt_nom.apogee
+                flt_fail.apogee_time = flt_nom.apogee_time
+                flt_fail.max_mach_number = max(flt_nom.max_mach_number, flt_fail.max_mach_number)
+                flt_fail.max_dynamic_pressure = max(flt_nom.max_dynamic_pressure, flt_fail.max_dynamic_pressure)
+                flt_fail.max_speed = max(flt_nom.max_speed, flt_fail.max_speed)
+                flt_fail.out_of_rail_velocity = flt_nom.out_of_rail_velocity
+                flt_fail.out_of_rail_time = getattr(flt_nom, 'out_of_rail_time', 0.0)
+            except Exception:
+                pass
+                
             return flt_fail
         except Exception as e:
             print("Failed free fall sim:", e)
@@ -266,7 +283,7 @@ def execute_monte_carlo(config, project_dir):
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
     
     # 8. Generate Dispersion Plots
-    from antares_fd.simulation.plotters import plot_monte_carlo_dispersion
+    from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists():
         # Calculate nominal failure flight
@@ -293,5 +310,6 @@ def execute_monte_carlo(config, project_dir):
             )
             
         plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, nominal_flight_fail=flight_fail, all_flights=all_flights)
+        plot_monte_carlo_distributions(outputs_file, results_dir, run_id)
         
     return mc

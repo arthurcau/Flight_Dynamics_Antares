@@ -99,7 +99,13 @@ The statistical summary of the landing dispersion and flight parameters is prese
 \\end{{figure}}
 """
 
-    latex_content += "\\end{document}\n"
+
+    plot_dist = results_dir / f"distributions_{run_id}.pdf"
+    if plot_dist.exists():
+        latex_content += f"\n\\begin{{figure}}[h!]\n    \\centering\n    \\includegraphics[width=1.0\\textwidth]{{{plot_dist.name}}}\n    \\caption{{Monte Carlo Statistical Distributions}}\n\\end{{figure}}\n"
+
+    latex_content += "\end{document}\n"
+
 
     # --- 4. Write and Compile ---
     tex_file = results_dir / f"report_{run_id}.tex"
