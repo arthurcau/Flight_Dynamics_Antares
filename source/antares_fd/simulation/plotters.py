@@ -229,7 +229,7 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
         # ----------------------------------------------------
 
         
-    plt.legend()
+    plt.legend(loc='upper left', bbox_to_anchor=(1.02, 1), borderaxespad=0.)
     
 
 
