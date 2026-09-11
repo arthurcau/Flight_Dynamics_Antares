@@ -1,0 +1,10 @@
+git:
+  commit: c7ff504f878a836764927b18b38b7fe2ecee3785
+  dirty_worktree: true
+run:
+  apogee_m: 1701.8957875317976
+  id: 2026-09-10T162759Z_00_Copy_This_nominal
+  max_mach: 0.49814292714617703
+  project: 00_Copy_This
+  script: nominal
+  timestamp_utc: '2026-09-10T16:28:00.480265'

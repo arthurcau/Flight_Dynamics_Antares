@@ -1,0 +1,10 @@
+git:
+  commit: b8433111746bd58e2ab503e509f9b0b9e6c9617d
+  dirty_worktree: true
+run:
+  apogee_m: 1701.9182447895519
+  id: 2026-09-10T155412Z_00_Copy_This_only_reefing
+  max_mach: 0.49814705569816325
+  project: 00_Copy_This
+  script: only_reefing
+  timestamp_utc: '2026-09-10T15:54:14.262724'

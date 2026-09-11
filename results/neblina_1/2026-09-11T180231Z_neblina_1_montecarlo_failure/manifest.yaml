@@ -1,0 +1,14 @@
+git:
+  commit: 7dbfbc4f0b732f2cdc7056834f565fb3b83a62cc
+  dirty_worktree: true
+monte_carlo:
+  enabled: true
+  seed: 42
+  simulations: 10
+run:
+  completed_cases: 10
+  failed_cases: 0
+  id: 2026-09-11T180231Z_neblina_1_montecarlo_failure
+  requested_cases: 10
+  status: completed
+  timestamp_utc: '2026-09-11T18:02:47.765812'

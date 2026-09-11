@@ -1,0 +1,14 @@
+git:
+  commit: b8433111746bd58e2ab503e509f9b0b9e6c9617d
+  dirty_worktree: false
+monte_carlo:
+  enabled: true
+  seed: 42
+  simulations: 100
+run:
+  completed_cases: 100
+  failed_cases: 0
+  id: 2026-09-10T144358Z_00_Copy_This_montecarlo
+  requested_cases: 100
+  status: completed
+  timestamp_utc: '2026-09-10T14:47:20.696266'
