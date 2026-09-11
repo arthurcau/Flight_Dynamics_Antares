@@ -283,7 +283,7 @@ def execute_monte_carlo(config, project_dir):
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
     
     # 8. Generate Dispersion Plots
-    from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions
+    from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions, plot_monte_carlo_convergence
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists():
         # Calculate nominal failure flight
@@ -311,5 +311,6 @@ def execute_monte_carlo(config, project_dir):
             
         plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, nominal_flight_fail=flight_fail, all_flights=all_flights)
         plot_monte_carlo_distributions(outputs_file, results_dir, run_id)
+        plot_monte_carlo_convergence(outputs_file, results_dir, run_id)
         
     return mc

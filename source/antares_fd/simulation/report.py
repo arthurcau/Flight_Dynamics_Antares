@@ -104,7 +104,12 @@ The statistical summary of the landing dispersion and flight parameters is prese
     if plot_dist.exists():
         latex_content += f"\n\\begin{{figure}}[h!]\n    \\centering\n    \\includegraphics[width=1.0\\textwidth]{{{plot_dist.name}}}\n    \\caption{{Monte Carlo Statistical Distributions}}\n\\end{{figure}}\n"
 
+    plot_conv = results_dir / f"convergence_{run_id}.pdf"
+    if plot_conv.exists():
+        latex_content += f"\n\\begin{{figure}}[h!]\n    \\centering\n    \\includegraphics[width=0.9\\textwidth]{{{plot_conv.name}}}\n    \\caption{{Monte Carlo Statistical Convergence (Data Reliability)}}\n\\end{{figure}}\n"
+
     latex_content += "\end{document}\n"
+
 
 
     # --- 4. Write and Compile ---
