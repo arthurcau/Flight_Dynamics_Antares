@@ -1,7 +1,0 @@
-import sys
-from rocketpy import Environment
-env = Environment(latitude=0, longitude=0, elevation=0)
-env.set_date((2023, 1, 1, 15, 0, 0))
-env.set_atmospheric_model(type="standard_atmosphere")
-print("Date:", getattr(env, 'date', getattr(env, 'datetime_date', None)))
-print("Wind direction:", env.wind_direction(0))
