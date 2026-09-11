@@ -234,6 +234,13 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
 
 
 
+
+    R_earth = 6378137.0
+    def xy_to_latlon(px, py, ref_lat, ref_lon):
+        lat = ref_lat + np.degrees(py / R_earth)
+        lon = ref_lon + np.degrees(px / (R_earth * np.cos(np.radians(ref_lat))))
+        return lat, lon
+
     # --- GENERATE INTERACTIVE FOLIUM HTML MAP WITH SATELLITE IMAGERY ---
     try:
         import folium
@@ -309,6 +316,22 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
                 icon=folium.Icon(color='orange', icon='info-sign')
             ).add_to(m)
             
+
+        # Add Nominal Trajectory path
+        if nominal_flight is not None:
+            path_pts = []
+            for px, py in zip(nominal_flight.x[:, 1], nominal_flight.y[:, 1]):
+                plat, plon = xy_to_latlon(px, py, lat_pad, lon_pad)
+                path_pts.append((plat, plon))
+            folium.PolyLine(locations=path_pts, color='black', weight=2, dash_array='5', tooltip='Nominal Trajectory').add_to(m)
+            
+        if nominal_flight_fail is not None:
+            fail_pts = []
+            for px, py in zip(nominal_flight_fail.x[:, 1], nominal_flight_fail.y[:, 1]):
+                plat, plon = xy_to_latlon(px, py, lat_pad, lon_pad)
+                fail_pts.append((plat, plon))
+            folium.PolyLine(locations=fail_pts, color='magenta', weight=2, dash_array='5', tooltip='Failure Free-fall').add_to(m)
+
         html_path = results_dir / f"interactive_map_{run_id}.html"
         m.save(str(html_path))
         print(f"[Monte Carlo] Interactive Satellite Map (Folium) saved to {html_path}")
@@ -320,12 +343,7 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
 
     # --- EXPORT KML FOR GOOGLE EARTH ---
     try:
-        R_earth = 6378137.0
-        
-        def xy_to_latlon(px, py, ref_lat, ref_lon):
-            lat = ref_lat + np.degrees(py / R_earth)
-            lon = ref_lon + np.degrees(px / (R_earth * np.cos(np.radians(ref_lat))))
-            return lat, lon
+        kml_path = results_dir / f"dispersion_{run_id}.kml"
             
         kml_path = results_dir / f"dispersion_{run_id}.kml"
         with open(kml_path, 'w') as kml:
@@ -360,6 +378,60 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
                     kml.write(f"    </Placemark>\n")
                 except Exception: pass
                 
+
+            # Write Nominal 3D Flight Path
+            if nominal_flight is not None:
+                kml.write(f"    <Placemark>\n")
+                kml.write(f"      <name>Nominal Trajectory</name>\n")
+                kml.write(f"      <Style><LineStyle><color>ff000000</color><width>4</width></LineStyle></Style>\n")
+                kml.write(f"      <LineString>\n")
+                kml.write(f"        <extrude>0</extrude><tessellate>1</tessellate><altitudeMode>absolute</altitudeMode>\n")
+                kml.write(f"        <coordinates>\n")
+                # Downsample to avoid massive KMLs
+                step = max(1, len(nominal_flight.x[:, 1]) // 500)
+                for px, py, pz in zip(nominal_flight.x[::step, 1], nominal_flight.y[::step, 1], nominal_flight.z[::step, 1]):
+                    plat, plon = xy_to_latlon(px, py, lat_pad, lon_pad)
+                    kml.write(f"          {plon},{plat},{pz}\n")
+                kml.write(f"        </coordinates>\n")
+                kml.write(f"      </LineString>\n")
+                kml.write(f"    </Placemark>\n")
+                
+            # Write Failure 3D Flight Path
+            if nominal_flight_fail is not None:
+                kml.write(f"    <Placemark>\n")
+                kml.write(f"      <name>Failure Free-Fall Trajectory</name>\n")
+                kml.write(f"      <Style><LineStyle><color>ffff00ff</color><width>4</width></LineStyle></Style>\n") # Magenta
+                kml.write(f"      <LineString>\n")
+                kml.write(f"        <extrude>0</extrude><tessellate>1</tessellate><altitudeMode>absolute</altitudeMode>\n")
+                kml.write(f"        <coordinates>\n")
+                step = max(1, len(nominal_flight_fail.x[:, 1]) // 500)
+                for px, py, pz in zip(nominal_flight_fail.x[::step, 1], nominal_flight_fail.y[::step, 1], nominal_flight_fail.z[::step, 1]):
+                    plat, plon = xy_to_latlon(px, py, lat_pad, lon_pad)
+                    kml.write(f"          {plon},{plat},{pz}\n")
+                kml.write(f"        </coordinates>\n")
+                kml.write(f"      </LineString>\n")
+                kml.write(f"    </Placemark>\n")
+                
+            # Optionally write 5 random Monte Carlo 3D outliers to see the dispersion cone in the sky!
+            if all_flights is not None and len(all_flights) > 0:
+                import random
+                sample_flights = random.sample(list(all_flights), min(5, len(all_flights)))
+                for idx, flt in enumerate(sample_flights):
+                    if 'z' in flt:
+                        kml.write(f"    <Placemark>\n")
+                        kml.write(f"      <name>Monte Carlo Iteration {idx}</name>\n")
+                        kml.write(f"      <Style><LineStyle><color>7f0000ff</color><width>1</width></LineStyle></Style>\n") # Semi-transparent Red
+                        kml.write(f"      <LineString>\n")
+                        kml.write(f"        <extrude>0</extrude><tessellate>1</tessellate><altitudeMode>absolute</altitudeMode>\n")
+                        kml.write(f"        <coordinates>\n")
+                        step = max(1, len(flt['x']) // 200)
+                        for px, py, pz in zip(flt['x'][::step], flt['y'][::step], flt['z'][::step]):
+                            plat, plon = xy_to_latlon(px, py, lat_pad, lon_pad)
+                            kml.write(f"          {plon},{plat},{pz}\n")
+                        kml.write(f"        </coordinates>\n")
+                        kml.write(f"      </LineString>\n")
+                        kml.write(f"    </Placemark>\n")
+
             kml.write("  </Document>\n")
             kml.write("</kml>\n")
             
