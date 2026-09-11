@@ -39,16 +39,33 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     plt.figure(figsize=(10, 10))
     
     # Plot extreme trajectories first (so they are in the background)
-    if all_flights and len(all_flights) == len(x):
+    if all_flights and len(all_flights) > 0:
         try:
-            idx_max_x = np.argmax(x)
-            idx_min_x = np.argmin(x)
-            idx_max_y = np.argmax(y)
-            idx_min_y = np.argmin(y)
-            extreme_indices = list(set([idx_max_x, idx_min_x, idx_max_y, idx_min_y]))
+            extreme_points = [
+                (np.max(x), y[np.argmax(x)]),
+                (np.min(x), y[np.argmin(x)]),
+                (x[np.argmax(y)], np.max(y)),
+                (x[np.argmin(y)], np.min(y))
+            ]
             
-            for i, idx in enumerate(extreme_indices):
-                flt_data = all_flights[idx]
+            plotted_extremes = []
+            for ex_x, ex_y in extreme_points:
+                best_flight = None
+                best_dist = float('inf')
+                for flt_data in all_flights:
+                    fx, fy = flt_data['x'][-1], flt_data['y'][-1]
+                    dist = (fx - ex_x)**2 + (fy - ex_y)**2
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_flight = flt_data
+                
+                # Plot if found and close enough (margin for float precision)
+                if best_flight is not None and best_dist < 10.0:
+                    # check if not already in list by identity (since dicts are unhashable, use id)
+                    if not any(id(best_flight) == id(p) for p in plotted_extremes):
+                        plotted_extremes.append(best_flight)
+                        
+            for i, flt_data in enumerate(plotted_extremes):
                 label = 'Extreme Trajectories' if i == 0 else None
                 plt.plot(flt_data['x'], flt_data['y'], color='red', linestyle='--', linewidth=1, label=label, alpha=0.5)
         except Exception as e:
