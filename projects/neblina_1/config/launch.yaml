@@ -14,8 +14,8 @@ launch:
     notes: null
   site:
     name: Sugarcane Launch Range
-    latitude: -21.90795
-    longitude: -48.96156
+    latitude: -21.938982
+    longitude: -48.950316
     elevation: 495.0
     datum: SIRGAS2000
     country: Brazil
@@ -33,7 +33,7 @@ launch:
     type: rail
     length: 6.0
     inclination_deg: 80.0
-    heading_deg: 90.0
+    heading_deg: 225.0
     base_clearance: 0.0
     roll_angle_deg: 0.0
     condition:

@@ -130,19 +130,24 @@ def execute_monte_carlo(config, project_dir):
         stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=(rb_tuple.position[2], 0.0))
         
     for parachute in rocket.parachutes:
+        if "main" in parachute.name.lower():
+            continue
         stoch_rocket.add_parachute(StochasticParachute(parachute))
 
 
-    # 4. Flight
-    flight = Flight(rocket, nominal_env, rail_length=config.launch.get("rail_length", 5.2), inclination=config.launch.get("inclination", 85.0), heading=config.launch.get("heading", 0.0))
+    rail_len = config.launch.get("rail", {}).get("length", 5.2)
+    inc = config.launch.get("rail", {}).get("inclination_deg", 85.0)
+    hdg = config.launch.get("rail", {}).get("heading_deg", 0.0)
+
+    flight = Flight(rocket, nominal_env, rail_length=rail_len, inclination=inc, heading=hdg)
     flt_cfg = mc_cfg.get("flight", {})
     inc_std = flt_cfg.get("inclination", {}).get("std", 0.0)
     hdg_std = flt_cfg.get("heading", {}).get("std", 0.0)
 
     stoch_flight = StochasticFlight(
         flight,
-        inclination=(config.launch.get("inclination", 85.0), inc_std) if inc_std else None,
-        heading=(config.launch.get("heading", 0.0), hdg_std) if hdg_std else None,
+        inclination=(inc, inc_std) if inc_std else None,
+        heading=(hdg, hdg_std) if hdg_std else None,
     )
 
     # 5. Output directory structure
@@ -208,7 +213,9 @@ def execute_monte_carlo(config, project_dir):
                 initial_solution=state_at_200,
                 terminate_on_apogee=False,
             )
-            flt_data = {'x': flt_fail.x[:, 1], 'y': flt_fail.y[:, 1]}
+            x_full = np.concatenate((flt_nom.x[:idx_200+1, 1], flt_fail.x[:, 1]))
+            y_full = np.concatenate((flt_nom.y[:idx_200+1, 1], flt_fail.y[:, 1]))
+            flt_data = {'x': x_full, 'y': y_full}
             all_flights.append(flt_data)
             return flt_fail
         except Exception as e:
@@ -261,6 +268,29 @@ def execute_monte_carlo(config, project_dir):
     from antares_fd.simulation.plotters import plot_monte_carlo_dispersion
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists():
-        plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, all_flights=all_flights)
+        # Calculate nominal failure flight
+        import copy
+        idx_200 = None
+        z_agl = flight.z[:, 1] - flight.env.elevation
+        apogee_idx = np.argmax(z_agl)
+        for i in range(apogee_idx, len(z_agl)):
+            if z_agl[i] < 200:
+                idx_200 = i
+                break
+        
+        flight_fail = None
+        if idx_200 is not None:
+            state_at_200 = flight.solution[idx_200]
+            booster = copy.deepcopy(flight.rocket)
+            booster.parachutes = []
+            flight_fail = Flight(
+                rocket=booster,
+                environment=flight.env,
+                rail_length=flight.rail_length,
+                initial_solution=state_at_200,
+                terminate_on_apogee=False,
+            )
+            
+        plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, nominal_flight_fail=flight_fail, all_flights=all_flights)
         
     return mc

@@ -133,16 +133,19 @@ def execute_monte_carlo(config, project_dir):
         stoch_rocket.add_parachute(StochasticParachute(parachute))
 
 
-    # 4. Flight
-    flight = Flight(rocket, nominal_env, rail_length=config.launch.get("rail_length", 5.2), inclination=config.launch.get("inclination", 85.0), heading=config.launch.get("heading", 0.0))
+    rail_len = config.launch.get("rail", {}).get("length", 5.2)
+    inc = config.launch.get("rail", {}).get("inclination_deg", 85.0)
+    hdg = config.launch.get("rail", {}).get("heading_deg", 0.0)
+
+    flight = Flight(rocket, nominal_env, rail_length=rail_len, inclination=inc, heading=hdg)
     flt_cfg = mc_cfg.get("flight", {})
     inc_std = flt_cfg.get("inclination", {}).get("std", 0.0)
     hdg_std = flt_cfg.get("heading", {}).get("std", 0.0)
 
     stoch_flight = StochasticFlight(
         flight,
-        inclination=(config.launch.get("inclination", 85.0), inc_std) if inc_std else None,
-        heading=(config.launch.get("heading", 0.0), hdg_std) if hdg_std else None,
+        inclination=(inc, inc_std) if inc_std else None,
+        heading=(hdg, hdg_std) if hdg_std else None,
     )
 
     # 5. Output directory structure

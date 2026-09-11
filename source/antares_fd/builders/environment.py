@@ -46,6 +46,9 @@ def build_environment(environment_config, launch_config) -> Environment:
             from antares_fd.config.exceptions import AtmosphereUnavailableError
 
             target_date_str = environment_config.get("target_date")
+            target_time_str = environment_config.get("target_time")
+            if target_date_str and target_time_str:
+                target_date_str = f"{target_date_str}T{target_time_str}"
             fallback_cfg = environment_config.get("fallback", {})
             fallback_enabled = fallback_cfg.get("enabled", False)
 
@@ -103,6 +106,9 @@ def build_environment_ensemble(environment_config, launch_config):
     print("\n[MAGI] Fetching atmospheric ensemble via MAGI adapter...")
     from MAGI.interface import get_atmospheric_ensemble
     target_date_str = environment_config.get("target_date")
+    target_time_str = environment_config.get("target_time")
+    if target_date_str and target_time_str:
+        target_date_str = f"{target_date_str}T{target_time_str}"
     
     profiles = get_atmospheric_ensemble(lat, lon, elev, target_date_str)
     

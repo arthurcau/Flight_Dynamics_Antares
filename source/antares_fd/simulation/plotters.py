@@ -7,7 +7,7 @@ import matplotlib.backends.backend_pdf
 
 from .statistics import calculate_covariance_ellipse
 
-def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str, nominal_flight=None, all_flights=None):
+def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str, nominal_flight=None, nominal_flight_fail=None, all_flights=None):
     """
     Parses outputs JSONL file to plot the 2D landing dispersion with probability ellipses.
     """
@@ -57,11 +57,17 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     # Plot nominal trajectory
     if nominal_flight is not None:
         try:
-            plt.plot(nominal_flight.x[:, 1], nominal_flight.y[:, 1], color='black', linewidth=2, label='Nominal Trajectory', zorder=5)
-            plt.scatter([nominal_flight.x[:, 1][-1]], [nominal_flight.y[:, 1][-1]], color='black', marker='*', s=150, label='Nominal Impact', zorder=6)
+            if nominal_flight_fail is not None:
+                t_fail_start = nominal_flight_fail.x[0, 0]
+                idx = np.abs(nominal_flight.x[:, 0] - t_fail_start).argmin()
+                plt.plot(nominal_flight.x[:idx+1, 1], nominal_flight.y[:idx+1, 1], color='black', linewidth=2, label='Nominal Trajectory', zorder=5)
+                plt.plot(nominal_flight_fail.x[:, 1], nominal_flight_fail.y[:, 1], color='magenta', linestyle='-.', linewidth=2, label='Nominal Failure Trajectory', zorder=5)
+                plt.scatter([nominal_flight_fail.x[-1, 1]], [nominal_flight_fail.y[-1, 1]], color='magenta', marker='*', s=150, label='Nominal Failure Impact', zorder=6)
+            else:
+                plt.plot(nominal_flight.x[:, 1], nominal_flight.y[:, 1], color='black', linewidth=2, label='Nominal Trajectory', zorder=5)
+                plt.scatter([nominal_flight.x[-1, 1]], [nominal_flight.y[-1, 1]], color='black', marker='*', s=150, label='Nominal Impact', zorder=6)
         except Exception as e:
             print(f"[Monte Carlo] Failed to plot nominal trajectory: {e}")
-
     plt.scatter(x, y, s=15, alpha=0.7, label='Simulated Impacts', color='blue', zorder=4)
     
     probabilities = {
@@ -98,6 +104,28 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     plt.title(f"Ground Dispersion Analysis\nRun: {run_id}")
     plt.axis('equal')
     plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Add Nose cone landing site for neblina_1 projects
+    if 'neblina_1' in str(results_dir):
+        lat_nose = -21.9438267
+        lon_nose = -48.9602672
+        lat_pad = -21.938982
+        lon_pad = -48.950316
+        if nominal_flight is not None and hasattr(nominal_flight, 'env'):
+            lat_pad = nominal_flight.env.latitude
+            lon_pad = nominal_flight.env.longitude
+            
+        R = 6378137.0
+        x_nose = np.radians(lon_nose - lon_pad) * R * np.cos(np.radians(lat_pad))
+        y_nose = np.radians(lat_nose - lat_pad) * R
+        plt.scatter(x_nose, y_nose, marker='X', color='darkred', s=150, zorder=10, edgecolors='black', label='Nose Cone Landing Site')
+        
+        lat_fuse = -21.943290
+        lon_fuse = -48.960191
+        x_fuse = np.radians(lon_fuse - lon_pad) * R * np.cos(np.radians(lat_pad))
+        y_fuse = np.radians(lat_fuse - lat_pad) * R
+        plt.scatter(x_fuse, y_fuse, marker='P', color='darkorange', s=150, zorder=10, edgecolors='black', label='Fuselage Landing Site')
+        
     plt.legend()
     
 
@@ -135,6 +163,11 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     ax_3d.set_ylabel("North / y (m)")
     ax_3d.set_zlabel("Altitude / z (m)")
     ax_3d.set_title(f"3D Isometric Dispersion Analysis\nRun: {run_id}")
+    
+    if 'neblina_1' in str(results_dir):
+        ax_3d.scatter(x_nose, y_nose, 0, marker='X', color='darkred', s=150, zorder=10, edgecolors='black', label='Nose Cone Landing Site')
+        ax_3d.scatter(x_fuse, y_fuse, 0, marker='P', color='darkorange', s=150, zorder=10, edgecolors='black', label='Fuselage Landing Site')
+        
     ax_3d.legend()
     
     plot_3d_path = results_dir / f"dispersion_plot_3d_{run_id}.pdf"
