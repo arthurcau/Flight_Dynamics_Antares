@@ -1,10 +1,10 @@
 monte_carlo:
-  num_simulations: 20
+  num_simulations: 40
   flight:
     inclination:
-     std: 1.0 # Desvio padrão da inclinação da rampa em graus
+     std: 5.0 # Desvio padrão da inclinação da rampa em graus
     heading:
-     std: 5.0 # Desvio padrão do azimute (heading) da rampa em graus
+     std: 10.0 # Desvio padrão do azimute (heading) da rampa em graus
     # rail_length:
     #   std: 0.1 # Desvio padrão do comprimento da rampa em metros
   environment:

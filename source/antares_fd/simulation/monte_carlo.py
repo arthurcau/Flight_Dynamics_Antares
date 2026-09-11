@@ -177,7 +177,7 @@ def execute_monte_carlo(config, project_dir):
             # We only extract what's needed for plotting to avoid pickle issues over IPC
             flt_data = {
                 'x': flt.x[:, 1],
-                'y': flt.y[:, 1]
+                'y': flt.y[:, 1], 'z': flt.z[:, 1]
             }
             all_flights.append(flt_data)
         except Exception:

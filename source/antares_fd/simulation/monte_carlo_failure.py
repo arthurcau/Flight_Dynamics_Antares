@@ -193,7 +193,7 @@ def execute_monte_carlo(config, project_dir):
                 
         if idx_200 is None:
             try:
-                flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1]}
+                flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1], 'z': flt_nom.z[:, 1]}
                 all_flights.append(flt_data)
             except Exception: pass
             return flt_nom
@@ -215,13 +215,14 @@ def execute_monte_carlo(config, project_dir):
             )
             x_full = np.concatenate((flt_nom.x[:idx_200+1, 1], flt_fail.x[:, 1]))
             y_full = np.concatenate((flt_nom.y[:idx_200+1, 1], flt_fail.y[:, 1]))
-            flt_data = {'x': x_full, 'y': y_full}
+            z_full = np.concatenate((flt_nom.z[:idx_200+1, 1], flt_fail.z[:, 1]))
+            flt_data = {'x': x_full, 'y': y_full, 'z': z_full}
             all_flights.append(flt_data)
             return flt_fail
         except Exception as e:
             print("Failed free fall sim:", e)
             try:
-                flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1]}
+                flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1], 'z': flt_nom.z[:, 1]}
                 all_flights.append(flt_data)
             except Exception: pass
             return flt_nom

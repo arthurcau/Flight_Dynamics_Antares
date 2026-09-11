@@ -1,56 +1,17 @@
-import re
+import sys
+
 with open("source/antares_fd/simulation/plotters.py", "r") as f:
     content = f.read()
 
-# 1. Update export_nominal_flight_plots to include combined Accel+Vel+Mach
-new_plot_block = """
-        # 3. Acceleration, Velocity, and Mach vs Time (Combined)
-        fig, ax1 = plt.subplots(figsize=(10, 6))
-        
-        t = flight.ax[:, 0]
-        a_tot = np.sqrt(flight.ax[:, 1]**2 + flight.ay[:, 1]**2 + flight.az[:, 1]**2)
-        v_tot = flight.speed[:, 1]
-        
-        color1 = 'tab:red'
-        ax1.set_xlabel('Time (s)')
-        ax1.set_ylabel('Acceleration (m/s²)', color=color1)
-        ax1.plot(t, a_tot, color=color1, label='Total Acceleration')
-        ax1.tick_params(axis='y', labelcolor=color1)
-        ax1.set_xlim(0, flight.apogee_time * 1.5)
-        
-        ax2 = ax1.twinx()  
-        color2 = 'tab:blue'
-        ax2.set_ylabel('Velocity (m/s)', color=color2)
-        ax2.plot(t, v_tot, color=color2, linestyle='--', label='Velocity')
-        ax2.tick_params(axis='y', labelcolor=color2)
-        
-        ax3 = ax1.twinx()
-        ax3.spines['right'].set_position(('outward', 60))
-        color3 = 'tab:green'
-        ax3.set_ylabel('Mach Number', color=color3)
-        ax3.plot(flight.mach_number[:, 0], flight.mach_number[:, 1], color=color3, linestyle=':', label='Mach Number')
-        ax3.tick_params(axis='y', labelcolor=color3)
-        
-        fig.tight_layout()
-        plt.title("Acceleration, Velocity & Mach vs Time")
-        pdf.savefig(fig)
-        plt.close(fig)
-"""
-
-content = content.replace("        # 3. Acceleration vs Time", new_plot_block + "\n        # Acceleration vs Time")
-
-# 2. Add 3D plot to Monte Carlo
-mc_3d_code = """
-    plot_path = results_dir / f"dispersion_plot_{run_id}.pdf"
-    plt.savefig(plot_path, bbox_inches='tight')
-    plt.close()
-    
-    # Generate 3D Isometric View of the Monte Carlo Dispersion
-    fig_3d = plt.figure(figsize=(12, 10))
-    ax_3d = fig_3d.add_subplot(111, projection='3d')
-    
-    # Scatter impacts on Z=0 plane
+replacement = """    # Scatter impacts on Z=0 plane
     ax_3d.scatter(x, y, np.zeros_like(x), s=5, alpha=0.5, label='Simulated Impacts (Z=0)', color='blue')
+    
+    # Draw ground plane to make ellipses and impacts clearly "on the ground"
+    min_x, max_x = np.min(x) - 500, np.max(x) + 500
+    min_y, max_y = np.min(y) - 500, np.max(y) + 500
+    xx, yy = np.meshgrid(np.linspace(min_x, max_x, 10), np.linspace(min_y, max_y, 10))
+    zz = np.zeros_like(xx)
+    ax_3d.plot_surface(xx, yy, zz, color='lightgray', alpha=0.3)
     
     # Draw ellipses in 3D (Z=0)
     for (label, p), color in zip(probabilities.items(), colors):
@@ -70,21 +31,49 @@ mc_3d_code = """
         except Exception as e:
             pass
             
-    ax_3d.plot([0], [0], [0], marker='*', color='black', markersize=12, label='Launch Pad')
-    ax_3d.set_xlabel("East / x (m)")
-    ax_3d.set_ylabel("North / y (m)")
-    ax_3d.set_zlabel("Altitude / z (m)")
-    ax_3d.set_title(f"3D Isometric Dispersion Analysis\\nRun: {run_id}")
-    ax_3d.legend()
-    
-    plot_3d_path = results_dir / f"dispersion_plot_3d_{run_id}.pdf"
-    plt.savefig(plot_3d_path, bbox_inches='tight')
-    plt.close(fig_3d)
-    
-    print(f"[Monte Carlo] 3D Dispersion plot saved to {plot_3d_path}")
+    # Plot extreme trajectories in 3D
+    try:
+        for i, flt_data in enumerate(plotted_extremes):
+            label = 'Extreme Trajectories' if i == 0 else None
+            if 'z' in flt_data:
+                ax_3d.plot(flt_data['x'], flt_data['y'], flt_data['z'], color='red', linestyle='--', linewidth=1, label=label, alpha=0.5)
+    except:
+        pass
+        
+    # Plot nominal trajectory in 3D
+    max_z = 1000 # default
+    if nominal_flight is not None:
+        max_z = np.max(nominal_flight.z[:, 1])
+        if nominal_flight_fail is not None:
+            t_fail_start = nominal_flight_fail.x[0, 0]
+            idx = np.abs(nominal_flight.x[:, 0] - t_fail_start).argmin()
+            ax_3d.plot(nominal_flight.x[:idx+1, 1], nominal_flight.y[:idx+1, 1], nominal_flight.z[:idx+1, 1], color='black', linewidth=2, label='Nominal Trajectory')
+            ax_3d.plot(nominal_flight_fail.x[:, 1], nominal_flight_fail.y[:, 1], nominal_flight_fail.z[:, 1], color='magenta', linestyle='-.', linewidth=2, label='Nominal Failure Trajectory')
+            
+            # Failure Point (mid-air)
+            ax_3d.scatter([nominal_flight_fail.x[0, 1]], [nominal_flight_fail.y[0, 1]], [nominal_flight_fail.z[0, 1]], color='red', marker='X', s=100, label='Failure Point')
+            
+            # Impact Point (Z=0)
+            ax_3d.scatter([nominal_flight_fail.x[-1, 1]], [nominal_flight_fail.y[-1, 1]], [0], color='magenta', marker='*', s=150, label='Nominal Failure Impact')
+        else:
+            ax_3d.plot(nominal_flight.x[:, 1], nominal_flight.y[:, 1], nominal_flight.z[:, 1], color='black', linewidth=2, label='Nominal Trajectory')
+            ax_3d.scatter([nominal_flight.x[-1, 1]], [nominal_flight.y[-1, 1]], [0], color='black', marker='*', s=150, label='Nominal Impact')
+            
+    ax_3d.set_zlim(0, max_z * 1.1)
 """
 
-content = content.replace("    plot_path = results_dir / f\"dispersion_plot_{run_id}.pdf\"\n    plt.savefig(plot_path, bbox_inches='tight')\n    plt.close()", mc_3d_code)
+# Now find the block to replace in plotters.py
+start_marker = "    # Scatter impacts on Z=0 plane\n    ax_3d.scatter(x, y, np.zeros_like(x), s=5, alpha=0.5, label='Simulated Impacts (Z=0)', color='blue')"
+end_marker = "    ax_3d.plot([0], [0], [0], marker='*', color='black', markersize=12, label='Launch Pad')"
 
-with open("source/antares_fd/simulation/plotters.py", "w") as f:
-    f.write(content)
+start_idx = content.find(start_marker)
+end_idx = content.find(end_marker)
+
+if start_idx != -1 and end_idx != -1:
+    new_content = content[:start_idx] + replacement + "\n" + content[end_idx:]
+    with open("source/antares_fd/simulation/plotters.py", "w") as f:
+        f.write(new_content)
+    print("Patched plotters.py successfully.")
+else:
+    print("Could not find markers to patch plotters.py")
+
