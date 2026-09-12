@@ -28,11 +28,13 @@ vehicle:
     reference_area_override: null
   mass_properties:
     method: measured
-    mass_without_motor: 17.186
-    center_of_mass_without_motor: 1.282
+    # Massa e Inércia recalculadas para incluir Payload de 4kg no Nose Cone (Z = 0.4m)
+    # Old mass: 17.186, Old CM: 1.282, Old I11/I22: 5.38
+    mass_without_motor: 21.186
+    center_of_mass_without_motor: 1.11547
     inertia:
-      I11: 5.38
-      I22: 5.38
+      I11: 7.9042
+      I22: 7.9042
       I33: 0.075405296
       I12: 0.0
       I13: 0.0
@@ -42,6 +44,7 @@ vehicle:
   mass_components: []
   drag:
     reference_area: vehicle_reference_area
+    surface_roughness: 0.00002 # 20 micrometers
     power_on:
       source_type: file
       file: aero/power_on_drag.csv

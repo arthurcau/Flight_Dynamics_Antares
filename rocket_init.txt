@@ -1,0 +1,70 @@
+Help on function __init__ in module rocketpy.rocket.rocket:
+
+__init__(
+    self,
+    radius,
+    mass,
+    inertia,
+    power_off_drag,
+    power_on_drag,
+    center_of_mass_without_motor,
+    coordinate_system_orientation='tail_to_nose'
+)
+    Initializes Rocket class, process inertial, geometrical and
+    aerodynamic parameters.
+
+    Parameters
+    ----------
+    radius : int, float
+        Rocket largest outer radius in meters.
+    mass : int, float
+        Rocket total mass without motor in kg.
+    inertia : tuple, list
+        Tuple or list containing the rocket's inertia tensor components,
+        in kg*m^2. This should be measured without motor and propellant so
+        that the inertia reference point is the
+        `center_of_mass_without_motor`.
+        Assuming e_3 is the rocket's axis of symmetry, e_1 and e_2 are
+        orthogonal and form a plane perpendicular to e_3, the inertia tensor
+        components must be given in the following order: (I_11, I_22, I_33,
+        I_12, I_13, I_23), where I_ij is the component of the inertia tensor
+        in the direction of e_i x e_j. Alternatively, the inertia tensor can
+        be given as (I_11, I_22, I_33), where I_12 = I_13 = I_23 = 0. This
+        can also be called as "rocket dry inertia tensor".
+    power_off_drag : int, float, callable, string, array
+        Rocket's drag coefficient when the motor is off. Can be given as an
+        entry to the Function class. See help(Function) for more
+        information. If int or float is given, it is assumed constant. If
+        callable, string or array is given, it must be a function of Mach
+        number only.
+    power_on_drag : int, float, callable, string, array
+        Rocket's drag coefficient when the motor is on. Can be given as an
+        entry to the Function class. See help(Function) for more
+        information. If int or float is given, it is assumed constant. If
+        callable, string or array is given, it must be a function of Mach
+        number only.
+    center_of_mass_without_motor : int, float
+        Position, in m, of the rocket's center of mass without motor
+        relative to the rocket's coordinate system. Default is 0, which
+        means the center of dry mass is chosen as the origin, to comply
+        with the legacy behavior of versions 0.X.Y.
+        See :doc:`Positions and Coordinate Systems </user/positions>`
+        for more information
+        regarding the rocket's coordinate system.
+    coordinate_system_orientation : string, optional
+        String defining the orientation of the rocket's coordinate system.
+        The coordinate system is defined by the rocket's axis of symmetry.
+        The system's origin may be placed anywhere along such axis, such as
+        in the nozzle or in the nose cone, and must be kept the same for all
+        other positions specified. The two options available are:
+        "tail_to_nose" and "nose_to_tail". The first defines the coordinate
+        system with the rocket's axis of symmetry pointing from the rocket's
+        tail to the rocket's nose cone. The second option defines the
+        coordinate system with the rocket's axis of symmetry pointing from
+        the  rocket's nose cone to the rocket's tail. Default is
+        "tail_to_nose".
+
+    Returns
+    -------
+    None
+
