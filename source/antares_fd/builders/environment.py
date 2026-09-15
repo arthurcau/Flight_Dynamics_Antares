@@ -1,6 +1,6 @@
 import datetime
 from rocketpy import Environment
-from antares_fd.config.exceptions import ConfigurationError
+from antares_fd.config.exceptions import ConfigurationError, AtmosphereUnavailableError
 
 def build_environment(environment_config, launch_config) -> Environment:
     print("Building Environment...")
@@ -43,7 +43,6 @@ def build_environment(environment_config, launch_config) -> Environment:
         if env_type == "MAGI":
             print("\n[MAGI] Fetching atmospheric profile via MAGI adapter...")
             from MAGI.interface import get_atmospheric_profile
-            from antares_fd.config.exceptions import AtmosphereUnavailableError
 
             target_date_str = environment_config.get("target_date")
             target_time_str = environment_config.get("target_time")
@@ -112,7 +111,17 @@ def build_environment_ensemble(environment_config, launch_config):
     
     time_window_minutes = environment_config.get("time_window_minutes", 120)
     time_step_minutes = environment_config.get("time_step_minutes", 10)
-    profiles = get_atmospheric_ensemble(lat, lon, elev, target_date_str, time_window_minutes, time_step_minutes)
+    fallback_cfg = environment_config.get("fallback", {})
+    fallback_enabled = fallback_cfg.get("enabled", False)
+
+    try:
+        profiles = get_atmospheric_ensemble(lat, lon, elev, target_date_str, time_window_minutes, time_step_minutes)
+    except Exception as e:
+        if fallback_enabled:
+            fallback_type = fallback_cfg.get("type", "standard_atmosphere")
+            print(f"\n[MAGI] WARNING: Atmospheric ensemble fetch failed ({e}). Explicit fallback enabled. Reverting to single {fallback_type}.")
+            return [build_environment(environment_config, launch_config)]
+        raise AtmosphereUnavailableError(f"MAGI could not generate a valid atmospheric ensemble: {e}\nSimulation aborted.") from e
     
     envs = []
     for profile in profiles:

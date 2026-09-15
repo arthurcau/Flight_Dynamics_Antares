@@ -1,0 +1,52 @@
+[
+  {
+    "simulate_seconds": 27.702278799988562,
+    "total_seconds": 30.47629579999193,
+    "workers": 1,
+    "count": 12,
+    "compact": false,
+    "profiled": false,
+    "completed": 12,
+    "input_bytes": 172778536
+  },
+  {
+    "simulate_seconds": 17.81572420000157,
+    "total_seconds": 21.04180049999559,
+    "workers": 3,
+    "count": 12,
+    "compact": false,
+    "profiled": false,
+    "completed": 12,
+    "input_bytes": 172900256
+  },
+  {
+    "simulate_seconds": 18.64466540000285,
+    "total_seconds": 21.49525019999419,
+    "workers": 6,
+    "count": 12,
+    "compact": false,
+    "profiled": false,
+    "completed": 12,
+    "input_bytes": 172900263
+  },
+  {
+    "simulate_seconds": 16.66719930000545,
+    "total_seconds": 19.11502549999568,
+    "workers": 6,
+    "count": 12,
+    "compact": true,
+    "profiled": false,
+    "completed": 12,
+    "input_bytes": 45232
+  },
+  {
+    "simulate_seconds": 13.652338300002157,
+    "total_seconds": 17.95120510000561,
+    "workers": 1,
+    "count": 2,
+    "compact": false,
+    "profiled": true,
+    "completed": 2,
+    "input_bytes": 28796422
+  }
+]

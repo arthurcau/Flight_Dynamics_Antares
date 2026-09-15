@@ -44,8 +44,8 @@ def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=Non
     balthasar = Balthasar(cache_dir=cache_dir, elevation_msl=elevation)
     forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str, time_window_minutes, time_step_minutes)
     
-    if forecast_result is None:
-        raise ConfigurationError("MAGI failed to generate an atmospheric profile.")
+    if forecast_result is None or (isinstance(forecast_result, pd.DataFrame) and forecast_result.empty) or (isinstance(forecast_result, list) and len(forecast_result) == 0):
+        raise ConfigurationError("MAGI failed to generate an atmospheric ensemble (no data available for target date).")
 
     if target_date_str:
         target_date = pd.to_datetime(target_date_str, utc=True)
@@ -62,13 +62,19 @@ def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=Non
     if not is_real_ensemble:
         df_nominal = casper.interpolate_profile(forecast_result, VERTICAL_GRID)
         df_nominal = df_nominal.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
+        if df_nominal.empty:
+            raise ConfigurationError("MAGI generated an empty interpolated ensemble profile.")
         profiles.append(_process_df_to_profile(df_nominal, elevation, latitude, longitude))
     else:
         for df in forecast_result:
             df_interp = casper.interpolate_profile(df, VERTICAL_GRID)
             df_interp = df_interp.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
-            profiles.append(_process_df_to_profile(df_interp, elevation, latitude, longitude))
-            
+            if not df_interp.empty:
+                profiles.append(_process_df_to_profile(df_interp, elevation, latitude, longitude))
+                
+    if not profiles:
+        raise ConfigurationError("MAGI generated an empty atmospheric ensemble.")
+        
     return profiles
 
 def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None) -> AtmosphericProfile:
@@ -87,8 +93,8 @@ def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None
     forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str)
     
     # If no data returned
-    if forecast_result is None or (isinstance(forecast_result, pd.DataFrame) and forecast_result.empty):
-        raise ConfigurationError("MAGI failed to generate an atmospheric profile.")
+    if forecast_result is None or (isinstance(forecast_result, pd.DataFrame) and forecast_result.empty) or (isinstance(forecast_result, list) and len(forecast_result) == 0):
+        raise ConfigurationError("MAGI failed to generate an atmospheric profile (no data available for target date).")
 
     if target_date_str:
         target_date = pd.to_datetime(target_date_str, utc=True)
@@ -114,6 +120,8 @@ def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None
 
     # Drop NaNs before returning (as required by RocketPy and our validation)
     df_nominal = df_nominal.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
+    if df_nominal.empty:
+        raise ConfigurationError("MAGI interpolated profile has no valid atmospheric values.")
     
     alt_asl = df_nominal['altitude_agl_m'].values.astype(float) + elevation
     pressure_vals = df_nominal['pressure_pa'].values.astype(float)

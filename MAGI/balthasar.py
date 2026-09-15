@@ -39,7 +39,6 @@ class Balthasar:
         has_rh = any('relative_humidity' in k or 'dew_point' in k for k in keys)
         return has_temp and has_wind and has_geo and has_rh
 
-    
     def _fetch_open_meteo(self, lat, lon, target_date_str):
         import requests
         import json
@@ -54,21 +53,63 @@ class Balthasar:
         for l in levels:
             hourly_vars.extend([f"temperature_{l}hPa", f"windspeed_{l}hPa", f"winddirection_{l}hPa", f"geopotential_height_{l}hPa"])
         
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={','.join(hourly_vars)}&models=gfs_seamless"
-        
         target_date = None
+        d = None
+        is_past_date = False
+        today_utc = datetime.datetime.now(datetime.timezone.utc).date()
         if target_date_str:
             target_date = pd.to_datetime(target_date_str)
             d = target_date.strftime("%Y-%m-%d")
-            url += f"&start_date={d}&end_date={d}"
-            
-        r = requests.get(url)
-        if r.status_code != 200:
-            print("Failed to fetch from Open-Meteo:", r.status_code, r.text)
+            if target_date.date() < today_utc:
+                is_past_date = True
+
+        def _request_api(use_historical: bool):
+            base_url = "https://historical-forecast-api.open-meteo.com/v1/forecast" if use_historical else "https://api.open-meteo.com/v1/forecast"
+            request_url = f"{base_url}?latitude={lat}&longitude={lon}&hourly={','.join(hourly_vars)}&models=gfs_seamless"
+            if d:
+                request_url += f"&start_date={d}&end_date={d}"
+            try:
+                resp = requests.get(request_url, timeout=20)
+                if resp.status_code == 200:
+                    res_json = resp.json()
+                    if 'hourly' in res_json and 'time' in res_json['hourly']:
+                        return res_json
+                print(f"BALTHASAR-2: Open-Meteo ({base_url}) status {resp.status_code}: {resp.text[:100]}")
+            except Exception as e:
+                print(f"BALTHASAR-2: Request to {base_url} failed: {e}")
+            return None
+
+        # Check if returned JSON contains valid pressure-level observations
+        def _has_valid_level_data(d_json):
+            if not d_json or 'hourly' not in d_json or 'time' not in d_json['hourly']:
+                return False
+            times_arr = pd.to_datetime(d_json['hourly']['time'])
+            if len(times_arr) == 0:
+                return False
+            if target_date:
+                t_clean = target_date.tz_localize(None) if target_date.tzinfo else target_date
+                check_idx = np.abs(times_arr - t_clean).argmin()
+            else:
+                check_idx = 0
+            for lvl in levels:
+                t_val = d_json['hourly'].get(f"temperature_{lvl}hPa", [None])[check_idx]
+                if t_val is not None:
+                    return True
+            return False
+
+        # Attempt with primary chosen endpoint
+        data = _request_api(use_historical=is_past_date)
+
+        # If data is empty or all values are None, attempt alternate endpoint
+        if not _has_valid_level_data(data):
+            alt_data = _request_api(use_historical=not is_past_date)
+            if _has_valid_level_data(alt_data):
+                data = alt_data
+
+        if not _has_valid_level_data(data):
+            print(f"BALTHASAR-2: Failed to fetch valid data from Open-Meteo for lat={lat}, lon={lon}, date={target_date_str}")
             return MagiSchema.create_empty()
             
-        data = r.json()
-        
         # Save to cache
         cache_file = os.path.join(self.cache_dir, f"openmeteo_{lat}_{lon}.json")
         with open(cache_file, "w") as f:
@@ -76,18 +117,18 @@ class Balthasar:
             
         times = pd.to_datetime(data['hourly']['time'])
         if target_date:
-            target_date = target_date.tz_localize(None)
-            idx = np.abs(times - target_date).argmin()
+            target_date_clean = target_date.tz_localize(None) if target_date.tzinfo else target_date
+            idx = np.abs(times - target_date_clean).argmin()
         else:
             idx = 0
             
         records = []
         for l in levels:
-            t = data['hourly'][f"temperature_{l}hPa"][idx]
-            ws = data['hourly'][f"windspeed_{l}hPa"][idx]
-            wd = data['hourly'][f"winddirection_{l}hPa"][idx]
-            h = data['hourly'][f"geopotential_height_{l}hPa"][idx]
-            if t is not None:
+            t = data['hourly'].get(f"temperature_{l}hPa", [None])[idx]
+            ws = data['hourly'].get(f"windspeed_{l}hPa", [None])[idx]
+            wd = data['hourly'].get(f"winddirection_{l}hPa", [None])[idx]
+            h = data['hourly'].get(f"geopotential_height_{l}hPa", [None])[idx]
+            if t is not None and h is not None and ws is not None and wd is not None:
                 records.append({
                     'pressure_pa': l * 100.0,
                     'altitude_msl_m': float(h),
@@ -96,6 +137,10 @@ class Balthasar:
                     'wind_direction_from_deg': float(wd)
                 })
                 
+        if not records:
+            print(f"BALTHASAR-2: No atmospheric pressure level records available for date {target_date_str}.")
+            return MagiSchema.create_empty()
+
         df = pd.DataFrame(records)
         df['valid_time_utc'] = pd.to_datetime(data['hourly']['time'][idx]).tz_localize('UTC')
         df['generation_time_utc'] = pd.to_datetime(datetime.datetime.now(datetime.UTC))
@@ -179,19 +224,22 @@ class Balthasar:
                 
             records = []
             for l in levels:
-                temp0 = data['hourly'][f"temperature_{l}hPa"][idx0]
-                temp1 = data['hourly'][f"temperature_{l}hPa"][idx1]
+                temp0 = data['hourly'].get(f"temperature_{l}hPa", [None])[idx0]
+                temp1 = data['hourly'].get(f"temperature_{l}hPa", [None])[idx1]
                 
-                ws0 = data['hourly'][f"windspeed_{l}hPa"][idx0]
-                ws1 = data['hourly'][f"windspeed_{l}hPa"][idx1]
+                ws0 = data['hourly'].get(f"windspeed_{l}hPa", [None])[idx0]
+                ws1 = data['hourly'].get(f"windspeed_{l}hPa", [None])[idx1]
                 
-                wd0 = data['hourly'][f"winddirection_{l}hPa"][idx0]
-                wd1 = data['hourly'][f"winddirection_{l}hPa"][idx1]
+                wd0 = data['hourly'].get(f"winddirection_{l}hPa", [None])[idx0]
+                wd1 = data['hourly'].get(f"winddirection_{l}hPa", [None])[idx1]
                 
-                h0 = data['hourly'][f"geopotential_height_{l}hPa"][idx0]
-                h1 = data['hourly'][f"geopotential_height_{l}hPa"][idx1]
+                h0 = data['hourly'].get(f"geopotential_height_{l}hPa", [None])[idx0]
+                h1 = data['hourly'].get(f"geopotential_height_{l}hPa", [None])[idx1]
                 
-                if temp0 is not None and temp1 is not None:
+                if (temp0 is not None and temp1 is not None and 
+                    ws0 is not None and ws1 is not None and 
+                    wd0 is not None and wd1 is not None and 
+                    h0 is not None and h1 is not None):
                     # Circular interpolation for wind direction
                     wd0_rad = np.radians(wd0)
                     wd1_rad = np.radians(wd1)
@@ -230,6 +278,9 @@ class Balthasar:
             
             ensemble_members.append(df_member)
             
+        if not ensemble_members:
+            return [df_nominal], False
+
         return ensemble_members, True
 
     def _fetch_deterministic_fallback(self):
@@ -348,18 +399,18 @@ class Balthasar:
 class BalthasarVisuals:
     @staticmethod
     def print_aerodrome_report(metars, tafs):
-        md_output = "### 🛫 Observações Atuais (METAR)\\n"
+        md_output = "### 🛫 Observações Atuais (METAR)\n"
         if metars:
             for m in metars:
-                md_output += f"- `{m}`\\n"
+                md_output += f"- `{m}`\n"
         else:
-            md_output += "Nenhum METAR disponível.\\n"
+            md_output += "Nenhum METAR disponível.\n"
 
-        md_output += "\\n### 🔮 Previsões de Aeródromo (TAF)\\n"
+        md_output += "\n### 🔮 Previsões de Aeródromo (TAF)\n"
         if tafs:
             for t in tafs:
-                md_output += f"- `{t}`\\n"
+                md_output += f"- `{t}`\n"
         else:
-            md_output += "Nenhum TAF disponível.\\n"
+            md_output += "Nenhum TAF disponível.\n"
 
         return md_output

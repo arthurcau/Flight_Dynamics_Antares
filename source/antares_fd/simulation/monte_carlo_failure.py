@@ -167,7 +167,9 @@ def execute_monte_carlo(config, project_dir):
         flight=stoch_flight,
         export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
     )
-    # --- Capture all flights via Multiprocess Manager ---
+    # Use RocketPy's process backend for every shared object. Mixing stdlib
+    # multiprocessing proxies with multiprocess workers breaks authentication
+    # when Windows spawns a fresh interpreter.
     import multiprocess
     manager = multiprocess.Manager()
     all_flights = manager.list()
@@ -175,8 +177,6 @@ def execute_monte_carlo(config, project_dir):
     _orig_run_single = mc._MonteCarlo__run_single_simulation
     # Setup Progress Tracking
     import time
-    from multiprocessing import Manager
-    manager = Manager()
     shared_counter = manager.Value('i', 0)
     start_time_val = manager.Value('d', time.time())
     total_sims = manager.Value('i', 0)
@@ -276,14 +276,22 @@ def execute_monte_carlo(config, project_dir):
             
     remaining_sims = num_sims - already_done
     
-    if remaining_sims <= 0:
-        print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
-    else:
-        print(f"[Monte Carlo] Starting {remaining_sims} simulations (Resuming {already_done}/{num_sims}). Seed={seed}")
-        total_sims.value = remaining_sims
-        start_time_val.value = time.time()
-        
-        mc.simulate(number_of_simulations=remaining_sims, append=(already_done > 0), parallel=True)
+    try:
+        if remaining_sims <= 0:
+            print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
+        else:
+            print(f"[Monte Carlo] Starting {remaining_sims} simulations (Resuming {already_done}/{num_sims}). Seed={seed}")
+            total_sims.value = remaining_sims
+            start_time_val.value = time.time()
+
+            # RocketPy expects the cumulative target when appending results.
+            mc.simulate(number_of_simulations=num_sims, append=(already_done > 0), parallel=True)
+
+        # Keep trajectories available for plotting after the manager is closed.
+        all_flights = list(all_flights)
+    finally:
+        mc._MonteCarlo__run_single_simulation = _orig_run_single
+        manager.shutdown()
 
     
     # 7. Write Manifest and Traceability
@@ -298,7 +306,7 @@ def execute_monte_carlo(config, project_dir):
         "run": {
             "id": run_id,
             "timestamp_utc": datetime.datetime.utcnow().isoformat(),
-            "status": "completed",
+            "status": "completed" if len(mc.outputs_log) >= num_sims else "failed",
             "requested_cases": num_sims,
             "completed_cases": len(mc.outputs_log) if hasattr(mc, 'outputs_log') else num_sims,
             "failed_cases": len(mc.errors_log) if hasattr(mc, 'errors_log') else 0,
@@ -316,6 +324,13 @@ def execute_monte_carlo(config, project_dir):
     
     with open(results_dir / "manifest.yaml", "w") as f:
         yaml.dump(manifest, f, default_flow_style=False)
+
+    # Worker startup failures can return from RocketPy without raising an error.
+    if len(mc.outputs_log) < num_sims:
+        raise RuntimeError(
+            f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{num_sims} "
+            f"simulations exported. Check worker errors and results in {results_dir}."
+        )
         
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
     

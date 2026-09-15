@@ -1,0 +1,32 @@
+[
+  {
+    "simulate_seconds": 16.7108062000043,
+    "total_seconds": 21.585854899996775,
+    "workers": 1,
+    "count": 12,
+    "compact": true,
+    "profiled": false,
+    "completed": 12,
+    "input_bytes": 45223
+  },
+  {
+    "simulate_seconds": 94.93380759999854,
+    "total_seconds": 100.11488709998957,
+    "workers": 6,
+    "count": 60,
+    "compact": false,
+    "profiled": false,
+    "completed": 60,
+    "input_bytes": 864501378
+  },
+  {
+    "simulate_seconds": 36.02347830000508,
+    "total_seconds": 44.161628099987865,
+    "workers": 6,
+    "count": 60,
+    "compact": true,
+    "profiled": false,
+    "completed": 60,
+    "input_bytes": 226159
+  }
+]
