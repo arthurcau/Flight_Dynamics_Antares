@@ -12,15 +12,17 @@ class EvaluatedRequirement:
     operator: str
     limit: Any
     units: str
+    source_type: str
     source: str
-    req_type: str
+    revision: str
+    notes: str
     value: Any
-    status: str  # "SATISFIED", "MARGINAL", "VIOLATED", "NOT EVALUATED"
+    status: str  # "SATISFIED", "MARGINAL", "VIOLATED", "NOT EVALUATED", "WITHIN GUIDELINE", "OUTSIDE GUIDELINE", "WITHIN MODEL RANGE", "MODEL RANGE EXCEEDED"
     margin: Optional[float]
     
     @property
     def is_critical(self) -> bool:
-        return self.status == "VIOLATED" and self.req_type == "requirement"
+        return self.status in ["VIOLATED", "OUTSIDE GUIDELINE", "MODEL RANGE EXCEEDED"]
 
 class RequirementDB:
     def __init__(self, yaml_path: Path):
@@ -30,6 +32,11 @@ class RequirementDB:
                 data = yaml.safe_load(f)
                 if data and 'requirements' in data:
                     self.requirements = data['requirements']
+                # Additionally ingest model validity boundaries if they exist under a different header, but let's centralize them
+                if data and 'model_validity' in data:
+                    for k, v in data['model_validity'].items():
+                        v['source_type'] = 'MODEL_VALIDITY_LIMIT'
+                        self.requirements[k] = v
 
     def evaluate(self, metrics: FlightMetrics) -> List[EvaluatedRequirement]:
         results = []
@@ -37,13 +44,8 @@ class RequirementDB:
             metric_name = req.get('metric', '')
             val = getattr(metrics, metric_name, None)
             
-            # Sub-field extraction logic (e.g. for parachute sink rates not directly in root)
-            if val is None:
-                if "drogue_sink_rate" in metric_name and metrics.drogue_event:
-                    val = metrics.drogue_event.steady_sink_rate
-                elif "main_sink_rate" in metric_name and metrics.main_event:
-                    val = metrics.main_event.steady_sink_rate
-
+            source_type = str(req.get('source_type', 'ENGINEERING_GUIDELINE')).upper()
+            
             if val is None:
                 results.append(EvaluatedRequirement(
                     req_id=req.get('id', key),
@@ -51,9 +53,11 @@ class RequirementDB:
                     metric_name=metric_name,
                     operator=req.get('operator', ''),
                     limit=req.get('limit', ''),
-                    units=req.get('units', ''),
+                    units=req.get('unit', req.get('units', '')),
+                    source_type=source_type,
                     source=req.get('source', ''),
-                    req_type=req.get('type', 'requirement'),
+                    revision=req.get('revision', ''),
+                    notes=req.get('notes', ''),
                     value=None,
                     status="NOT EVALUATED",
                     margin=None
@@ -62,25 +66,41 @@ class RequirementDB:
 
             op = req.get('operator')
             limit = req.get('limit')
+            tolerance = float(req.get('tolerance', 0.0))
             status = "NOT EVALUATED"
             margin = None
 
             try:
+                # Minimum bound
                 if op == ">=":
                     margin = float(val) - float(limit)
-                    status = "SATISFIED" if margin >= 0 else "VIOLATED"
+                # Maximum bound
                 elif op == "<=":
                     margin = float(limit) - float(val)
-                    status = "SATISFIED" if margin >= 0 else "VIOLATED"
-                elif op == "between":
+                elif op == "between" and isinstance(limit, list):
                     margin = min(float(val) - float(limit[0]), float(limit[1]) - float(val))
-                    status = "SATISFIED" if (float(limit[0]) <= float(val) <= float(limit[1])) else "VIOLATED"
-            except Exception:
-                status = "NOT EVALUATED"
+                    
+                if margin is not None:
+                    # Positive margin is healthy. 
+                    # If margin is negative but bounded by tolerance, it's MARGINAL.
+                    is_nominal = (margin >= 0)
+                    is_marginal = (not is_nominal) and (abs(margin) <= tolerance)
+                    is_failed = (margin < -tolerance)
 
-            # Check if it was slightly violated (warnings for guidelines)
-            if status == "VIOLATED" and req.get('type') == 'guideline':
-                status = "MARGINAL"
+                    if source_type in ["FORMAL_REQUIREMENT", "ANTARES_REQUIREMENT", "HARDWARE_QUALIFICATION_LIMIT"]:
+                        if is_nominal: status = "SATISFIED"
+                        elif is_marginal: status = "MARGINAL"
+                        else: status = "VIOLATED"
+                    elif "GUIDELINE" in source_type:
+                        if is_nominal or is_marginal: status = "WITHIN GUIDELINE"
+                        else: status = "OUTSIDE GUIDELINE"
+                    elif "VALIDITY" in source_type:
+                        if is_nominal or is_marginal: status = "WITHIN MODEL RANGE"
+                        else: status = "MODEL RANGE EXCEEDED"
+                    else:
+                        status = "SATISFIED" if (is_nominal or is_marginal) else "VIOLATED"
+            except Exception as e:
+                status = "NOT EVALUATED"
 
             results.append(EvaluatedRequirement(
                 req_id=req.get('id', key),
@@ -88,9 +108,11 @@ class RequirementDB:
                 metric_name=metric_name,
                 operator=op,
                 limit=limit,
-                units=req.get('units', ''),
+                units=req.get('unit', req.get('units', '')),
+                source_type=source_type,
                 source=req.get('source', ''),
-                req_type=req.get('type', 'requirement'),
+                revision=req.get('revision', ''),
+                notes=req.get('notes', ''),
                 value=val,
                 status=status,
                 margin=margin

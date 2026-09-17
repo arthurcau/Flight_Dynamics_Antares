@@ -79,7 +79,7 @@ class FlightDynamicsReportBuilder:
         for req in self.ctx.requirements:
             margin_str = f"{req.margin:+.2f} {req.units}" if req.margin is not None else "-"
             val_str = f"{req.value:.2f} {req.units}" if isinstance(req.value, float) else str(req.value)
-            table_data.append([req.req_id, req.description, val_str, margin_str, req.status])
+            table_data.append([req.req_id, req.description, val_str, margin_str, tables._get_badge(req.status, self.styles['TableCell'])])
         
         self.flowables.append(tables.create_standard_table(table_data))
         self.flowables.append(PageBreak())

@@ -1,8 +1,5 @@
 """
 ReportLab Table Formatters for Antares Engineering Reports.
-
-Formats all quantitative tables using Platypus Table objects with clean typography,
-proper column alignments, unit indicators, and status badges.
 """
 
 from typing import Any, Dict, List, Optional
@@ -19,21 +16,23 @@ from .theme import (
 
 def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
     """Generates a color-coded status badge Paragraph."""
-    badge_colors = {
-        "SATISFIED": ("#065F46", "#D1FAE5"),
-        "PASS": ("#065F46", "#D1FAE5"),
-        "VALID": ("#065F46", "#D1FAE5"),
-        "MARGINAL": ("#92400E", "#FEF3C7"),
-        "WARNING": ("#92400E", "#FEF3C7"),
-        "WARN (DRIFT)": ("#92400E", "#FEF3C7"),
-        "CRITICAL FLAG": ("#991B1B", "#FEE2E2"),
-        "CRITICAL FAIL": ("#991B1B", "#FEE2E2"),
-        "FAIL": ("#991B1B", "#FEE2E2"),
-        "VIOLATED": ("#991B1B", "#FEE2E2"),
-        "QUALIFIED": ("#065F46", "#D1FAE5"),
-        "INFO": ("#1E40AF", "#DBEAFE"),
-    }
-    fg, bg = badge_colors.get(str(status).upper(), ("#334155", "#F1F5F9"))
+    s = str(status).upper().strip()
+    
+    # Vocabulary mappings for mechanical semantic evaluation
+    pass_tags = ["SATISFIED", "PASS", "VALID", "QUALIFIED", "WITHIN GUIDELINE", "WITHIN MODEL RANGE", "COVERED"]
+    warn_tags = ["MARGINAL", "WARNING", "WARN (DRIFT)", "PARTIAL"]
+    fail_tags = ["VIOLATED", "FAIL", "CRITICAL FLAG", "CRITICAL FAIL", "OUTSIDE GUIDELINE", "MODEL RANGE EXCEEDED", "NOT COVERED"]
+    
+    if s in pass_tags:
+        fg, bg = ("#065F46", "#D1FAE5")
+    elif s in warn_tags:
+        fg, bg = ("#92400E", "#FEF3C7")
+    elif s in fail_tags:
+        fg, bg = ("#991B1B", "#FEE2E2")
+    else:
+        # INFO / NOT EVALUATED / UNKNOWN
+        fg, bg = ("#1E40AF", "#DBEAFE")
+        
     text = f'<font color="{fg}"><b>{status}</b></font>'
     badge_style = ParagraphStyle(
         name=f"Badge_{status}",
@@ -44,6 +43,7 @@ def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
         alignment=1,  # Centered
     )
     return Paragraph(text, badge_style)
+
 
 def create_standard_table(data_matrix: List[List[Any]]) -> Table:
     t = Table(data_matrix)
