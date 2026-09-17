@@ -56,7 +56,7 @@ def _add_event_lines(ax, events: List[tuple[float, str]], max_t: Optional[float]
 def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path) -> Path:
     setup_matplotlib_theme()
     g0 = 9.80665
-    t_bo = metrics.burn_time
+    t_bo = metrics.burnout_time
     ts = metrics.timeseries
 
     mask = ts.time <= t_bo * 1.15

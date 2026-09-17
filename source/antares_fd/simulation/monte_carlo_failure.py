@@ -179,7 +179,7 @@ def execute_monte_carlo(config, project_dir):
         environment=stoch_env,
         rocket=stoch_rocket,
         flight=stoch_flight,
-        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_velocity'],
+        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
     )
     
     manager = CampaignManager()
@@ -240,7 +240,7 @@ def execute_monte_carlo(config, project_dir):
                 flt_fail.apogee_time = flt_nom.apogee_time
                 flt_fail.max_mach_number = max(flt_nom.max_mach_number, flt_fail.max_mach_number)
                 flt_fail.max_dynamic_pressure = max(flt_nom.max_dynamic_pressure, flt_fail.max_dynamic_pressure)
-                flt_fail.max_velocity = max(flt_nom.max_velocity, flt_fail.max_velocity)
+                flt_fail.max_speed = max(flt_nom.max_speed, flt_fail.max_speed)
                 flt_fail.out_of_rail_velocity = flt_nom.out_of_rail_velocity
                 flt_fail.out_of_rail_time = getattr(flt_nom, 'out_of_rail_time', 0.0)
             except Exception:

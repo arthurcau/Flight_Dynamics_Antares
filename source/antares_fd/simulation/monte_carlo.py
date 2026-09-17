@@ -171,7 +171,7 @@ def execute_monte_carlo(config, project_dir):
         environment=stoch_env,
         rocket=stoch_rocket,
         flight=stoch_flight,
-        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_velocity'],
+        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
     )
     # Use RocketPy's process backend for every shared object.
     manager = CampaignManager()

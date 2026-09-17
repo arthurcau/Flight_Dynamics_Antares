@@ -12,6 +12,7 @@ from antares_fd.analysis.provenance import collect_reproducibility_data, evaluat
 from antares_fd.reporting.theme import setup_report_styles, BaseReportDocTemplate
 from antares_fd.reporting import plot_registry, tables
 
+
 class ReportContext:
     def __init__(self, project_dir: Path, metrics: FlightMetrics, req_db: RequirementDB):
         self.project_dir = project_dir
@@ -71,10 +72,55 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(PageBreak())
 
     def _add_executive_summary(self):
-        self.flowables.append(Paragraph("1. Executive Summary", self.styles["Heading1"]))
+        self.flowables.append(Paragraph("1. Executive Summary & Report Status", self.styles["Heading1"]))
+        
+        from reportlab.platypus import KeepTogether
+        
+        # Report Completeness Status
+        completeness = {
+            "Nominal Simulation": "COMPLETE",
+            "Atmosphere Model": "COMPLETE" if self.ctx.metrics.environment_type != "UNKNOWN" else "UNKNOWN",
+            "Scenario Analysis": "COMPLETE" if self.ctx.scenario_metrics and len(self.ctx.scenario_metrics) > 1 else "NOT AVAILABLE",
+            "Validation Data": "COMPLETE" if self.ctx.metrics.validation else "NOT AVAILABLE"
+        }
+        
+        mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json" if self.ctx.mc_results_dir else None
+        has_mc = mc_summary_file and mc_summary_file.exists()
+        if has_mc:
+            try:
+                with open(mc_summary_file, 'r') as f:
+                    mc_data = json.load(f)
+                mc_status = mc_data.get("status", "PARTIAL").upper()
+            except Exception:
+                mc_status = "FAILED"
+        else:
+            mc_status = "NOT AVAILABLE"
+            
+        completeness["Monte Carlo Execution"] = mc_status
+        
+        self.flowables.append(Paragraph("Evidence Package Generation Status", self.styles["Heading2"]))
+        self.flowables.append(tables.build_completeness_table(completeness, self.styles))
+        self.flowables.append(Spacer(1, 0.5 * cm))
+
+        # True Executive Summary Panels
+        kpi_table_1 = tables.build_flight_performance_table(self.ctx.metrics)
+        kpi_table_2 = tables.build_stability_table(self.ctx.metrics)
+        kpi_table_3 = tables.build_recovery_table(self.ctx.metrics)
+
+        self.flowables.append(Paragraph("Flight Performance", self.styles["Heading2"]))
+        self.flowables.append(kpi_table_1)
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
+        self.flowables.append(Paragraph("Stability", self.styles["Heading2"]))
+        self.flowables.append(kpi_table_2)
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
+        self.flowables.append(Paragraph("Recovery", self.styles["Heading2"]))
+        self.flowables.append(kpi_table_3)
+        self.flowables.append(Spacer(1, 1 * cm))
         
         # Requirements Table
-        self.flowables.append(Paragraph("Requirement Compliance Matrix", self.styles["Heading2"]))
+        self.flowables.append(Paragraph("Engineering Requirements Compliance", self.styles["Heading2"]))
         table_data = [["ID", "Description", "Result", "Margin", "Status"]]
         for req in self.ctx.requirements:
             margin_str = f"{req.margin:+.2f} {req.units}" if req.margin is not None else "-"
@@ -117,6 +163,23 @@ class FlightDynamicsReportBuilder:
 
     def _add_mass_propulsion(self):
         self.flowables.append(Paragraph("4. Mass & Propulsion Dynamics", self.styles["Heading1"]))
+        
+        # Add a compact metric table here! (Phase 7 rule)
+        metrics = self.ctx.metrics
+        p_data = [["Propulsion KPI", "Value"]]
+        p_data.append(["Initial Mass", f"{metrics.burnout_mass + metrics.propellant_mass:.2f} kg"])
+        p_data.append(["Burnout Mass", f"{metrics.burnout_mass:.2f} kg"])
+        p_data.append(["Propellant Mass", f"{metrics.propellant_mass:.2f} kg"])
+        p_data.append(["Initial T/W", f"{metrics.initial_tw:.2f}"])
+        p_data.append(["Peak T/W", f"{metrics.peak_tw:.2f}"])
+        p_data.append(["Burn Time", f"{metrics.burnout_time:.2f} s"])
+        p_data.append(["Total Impulse", f"{metrics.total_impulse:.1f} Ns"])
+        p_data.append(["Average Thrust", f"{metrics.average_thrust:.1f} N"])
+        p_data.append(["Peak Thrust", f"{metrics.max_thrust:.1f} N"])
+        
+        self.flowables.append(tables.create_standard_table(p_data))
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
         fig_path = self.ctx.fig_dir / "propulsion.png"
         plot_registry.generate_mass_and_propulsion_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
@@ -125,6 +188,21 @@ class FlightDynamicsReportBuilder:
 
     def _add_aero_loads(self):
         self.flowables.append(Paragraph("5. Aerodynamic Loads (Max Q & Bending)", self.styles["Heading1"]))
+        
+        # Phase 7 rule: ADD MAX-Q STATE PANEL
+        metrics = self.ctx.metrics
+        q_data = [["Max-Q State", "Value"]]
+        q_data.append(["Dynamic Pressure", f"{metrics.max_dynamic_pressure/1000.0:.1f} kPa"])
+        q_data.append(["Time", f"{metrics.max_q_time:.2f} s"])
+        q_data.append(["Altitude AGL", f"{metrics.max_q_altitude:.1f} m"])
+        q_data.append(["Mach Number", f"{metrics.max_q_mach:.2f} M"])
+        q_data.append(["Velocity", f"{metrics.max_q_mach * 340.0:.1f} m/s"]) # Approximate speed of sound
+        q_data.append(["Angle of Attack", f"{metrics.angle_of_attack_at_max_q:.1f} deg"])
+        q_data.append(["Static Margin", f"{metrics.static_margin_max_q:.2f} cal"])
+        
+        self.flowables.append(tables.create_standard_table(q_data))
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
         fig_path = self.ctx.fig_dir / "aero_loads.png"
         plot_registry.generate_propulsion_and_loads_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
@@ -132,7 +210,19 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(PageBreak())
         
     def _add_stability(self):
-        self.flowables.append(Paragraph("6. Stability & Attitude Dynamics", self.styles["Heading1"]))
+        self.flowables.append(Paragraph("6. Stability Evolution", self.styles["Heading1"]))
+        # Phase 7 rule: Small marker table
+        metrics = self.ctx.metrics
+        sm_data = [["Stability Checkpoint", "Margin (cal)"]]
+        sm_data.append(["Liftoff", f"{metrics.static_margin_liftoff:.2f}"])
+        sm_data.append(["Rail Exit", f"{metrics.static_margin_rail_exit:.2f}"])
+        sm_data.append(["Max-Q", f"{metrics.static_margin_max_q:.2f}"])
+        sm_data.append(["Burnout", f"{metrics.static_margin_burnout:.2f}"])
+        sm_data.append(["Maximum Margin", f"{metrics.maximum_static_margin:.2f}"])
+        
+        self.flowables.append(tables.create_standard_table(sm_data))
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
         fig_path = self.ctx.fig_dir / "stability.png"
         plot_registry.generate_stability_and_attitude_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
@@ -157,6 +247,23 @@ class FlightDynamicsReportBuilder:
         
     def _add_multi_scenario(self):
         self.flowables.append(Paragraph("9. Multi-Scenario Comparative Flight", self.styles["Heading1"]))
+        
+        # Phase 7 rule: Quantitative comparison table
+        t_data = [["Scenario", "Apogee (m)", "Flight Time (s)", "Max Mach", "Max-Q (kPa)", "Landing Dist (m)", "Touchdown (m/s)"]]
+        for s_name, s_metric in self.ctx.scenario_metrics.items():
+            t_data.append([
+                s_name,
+                f"{s_metric.apogee_agl:.1f}",
+                f"{s_metric.flight_duration:.1f}",
+                f"{s_metric.max_mach:.2f}",
+                f"{s_metric.max_dynamic_pressure/1000.0:.1f}",
+                f"{s_metric.landing_distance:.1f}",
+                f"{s_metric.touchdown_velocity:.1f}"
+            ])
+            
+        self.flowables.append(tables.create_standard_table(t_data))
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
         fig_path = self.ctx.fig_dir / "multi_scenario.png"
         plot_registry.generate_multi_scenario_chart(self.ctx.scenario_metrics, fig_path)
         if fig_path.exists():
@@ -165,10 +272,37 @@ class FlightDynamicsReportBuilder:
 
     def _add_monte_carlo(self):
         self.flowables.append(Paragraph("10. Monte Carlo Stochastic Analysis", self.styles["Heading1"]))
-        mc_file = self.ctx.mc_results_dir / "monte_carlo_results.json"
-        if not mc_file.exists():
-            self.flowables.append(Paragraph("Monte Carlo execution completed, but results JSON is missing.", self.styles["TableCell"]))
+        mc_file = self.ctx.mc_results_dir / "mc_sim.outputs.txt"
+        
+        mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json"
+        has_mc = False
+        if mc_summary_file.exists():
+            with open(mc_summary_file, 'r') as f:
+                mc_data = json.load(f)
+            
+            s_data = [["Stochastic Run Info", "Value"]]
+            s_data.append(["Campaign ID", mc_data.get("campaign_id", "Unknown")])
+            s_data.append(["Status", mc_data.get("status", "Unknown").upper()])
+            s_data.append(["Requested Cases", mc_data.get("requested", 0)])
+            s_data.append(["Completed Cases", mc_data.get("completed", 0)])
+            s_data.append(["Failed Cases", mc_data.get("failed", 0)])
+            self.flowables.append(tables.create_standard_table(s_data))
+            self.flowables.append(Spacer(1, 0.5 * cm))
+            has_mc = (mc_data.get("completed", 0) > 0)
+            
+        # Add Input table
+        self.flowables.append(Paragraph("Stochastic Inputs / Provenance", self.styles["Heading2"]))
+        self.flowables.append(tables.build_mc_input_table(self.ctx.project_dir, self.styles))
+        self.flowables.append(Spacer(1, 0.5 * cm))
+        
+        if not mc_file.exists() or not has_mc:
+            self.flowables.append(Paragraph("Monte Carlo execution completed, but RocketPy output text is missing.", self.styles["TableCell"]))
             return
+
+        # Add Output table
+        self.flowables.append(Paragraph("Output Distributions", self.styles["Heading2"]))
+        self.flowables.append(tables.build_mc_output_table(mc_file))
+        self.flowables.append(Spacer(1, 1 * cm))
             
         fig_disp = self.ctx.fig_dir / "mc_dispersion.png"
         plot_registry.generate_mc_dispersion_chart(mc_file, fig_disp, "MC", self.ctx.metrics.validation)
