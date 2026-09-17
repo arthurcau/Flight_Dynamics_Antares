@@ -1,0 +1,10 @@
+{
+  "campaign_id": "2026-09-17T035857Z_neblina_1_campaign",
+  "status": "COMPLETED",
+  "requested": 20,
+  "completed": 20,
+  "failed": 0,
+  "seed": 42,
+  "parallel": true,
+  "workers": null
+}

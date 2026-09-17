@@ -1,0 +1,12 @@
+campaign:
+  deterministic_scenarios:
+  - Nominal Flight
+  - Ballistic Free-Fall
+  - Main at Apogee
+  - Only Reefing Descent
+  - Separation at Main
+  master_report_pdf: flight_dynamics_report.pdf
+  monte_carlo_executed: true
+  project: neblina_1
+  run_id: 2026-09-17T035857Z_neblina_1_campaign
+  timestamp_utc: '2026-09-17T03:59:32.200935+00:00'

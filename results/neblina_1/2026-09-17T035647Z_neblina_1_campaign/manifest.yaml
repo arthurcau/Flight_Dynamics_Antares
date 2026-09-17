@@ -1,0 +1,22 @@
+git:
+  commit: 5bf285ed9ec5e9c9703e9f4f1ee6914f13fe0ebb
+  dirty_worktree: true
+monte_carlo:
+  enabled: true
+  parallel: true
+  seed: 42
+  simulations: 20
+  uncertainty_registry: uncertainties.yaml
+  workers: null
+run:
+  completed_cases: 20
+  failed_cases: 0
+  id: 2026-09-17T035647Z_neblina_1_campaign
+  requested_cases: 20
+  status: completed
+  timestamp_utc: '2026-09-17T03:57:15.363582+00:00'
+storage:
+  include_function_data: false
+  retained_trajectories: 7
+  trajectories_seen: 20
+  trajectory_policy: four_endpoint_extrema_plus_five_reservoir_samples
