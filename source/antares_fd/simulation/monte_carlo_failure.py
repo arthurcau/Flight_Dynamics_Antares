@@ -1,4 +1,5 @@
 import datetime
+import json
 from pathlib import Path
 import yaml
 import subprocess
@@ -44,6 +45,15 @@ def execute_monte_carlo(config, project_dir):
         
     num_sims = mc_cfg.get("num_simulations", 10)
     seed = mc_cfg.get("random_seed", 42)
+    parallel = bool(mc_cfg.get("parallel", True))
+    configured_workers = mc_cfg.get("workers")
+    if configured_workers is not None:
+        try:
+            configured_workers = int(configured_workers)
+        except (TypeError, ValueError) as exc:
+            raise ConfigurationError("monte_carlo.workers must be an integer") from exc
+        if configured_workers < 1:
+            raise ConfigurationError("monte_carlo.workers must be greater than zero")
     
     # Force seed reproducibility
     np.random.seed(seed)
@@ -52,6 +62,10 @@ def execute_monte_carlo(config, project_dir):
     # 5. Output directory structure (supports campaign mode)
     campaign_dir_env = os.environ.get("ANTARES_CAMPAIGN_DIR")
     is_campaign_active = os.environ.get("ANTARES_CAMPAIGN_ACTIVE") == "1"
+    compact_outputs = (
+        is_campaign_active
+        and os.environ.get("ANTARES_COMPACT_OUTPUTS", "1") != "0"
+    )
 
     if campaign_dir_env:
         results_dir = Path(campaign_dir_env)
@@ -270,8 +284,15 @@ def execute_monte_carlo(config, project_dir):
             print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
         else:
             print(f"[Monte Carlo] Starting {remaining_sims} simulations (Resuming {already_done}/{num_sims}). Seed={seed}")
-            mc.simulate(number_of_simulations=num_sims, append=(already_done > 0),
-                        parallel=True, include_function_data=False)
+            simulate_kwargs = {
+                "number_of_simulations": num_sims,
+                "append": already_done > 0,
+                "parallel": parallel,
+                "include_function_data": False,
+            }
+            if configured_workers is not None and parallel:
+                simulate_kwargs["n_workers"] = configured_workers
+            mc.simulate(**simulate_kwargs)
 
         trajectory_snapshot = all_flights.snapshot()
         all_flights = trajectory_snapshot["trajectories"]
@@ -287,14 +308,31 @@ def execute_monte_carlo(config, project_dir):
         commit = "unknown"
         dirty = False
 
+    completed_cases = len(mc.outputs_log) if hasattr(mc, "outputs_log") else 0
+    failed_cases = len(mc.errors_log) if hasattr(mc, "errors_log") else 0
+    campaign_status = "completed" if completed_cases >= num_sims else "failed"
+
+    summary = {
+        "campaign_id": run_id,
+        "status": campaign_status.upper(),
+        "requested": num_sims,
+        "completed": completed_cases,
+        "failed": failed_cases,
+        "seed": seed,
+        "parallel": parallel,
+        "workers": configured_workers,
+    }
+    with open(results_dir / "monte_carlo_summary.json", "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+
     manifest = {
         "run": {
             "id": run_id,
             "timestamp_utc": datetime.datetime.now(datetime.UTC).isoformat(),
-            "status": "completed" if len(mc.outputs_log) >= num_sims else "failed",
+            "status": campaign_status,
             "requested_cases": num_sims,
-            "completed_cases": len(mc.outputs_log) if hasattr(mc, 'outputs_log') else num_sims,
-            "failed_cases": len(mc.errors_log) if hasattr(mc, 'errors_log') else 0,
+            "completed_cases": completed_cases,
+            "failed_cases": failed_cases,
         },
         "git": {
             "commit": commit,
@@ -304,6 +342,8 @@ def execute_monte_carlo(config, project_dir):
             "enabled": True,
             "seed": seed,
             "simulations": num_sims,
+            "parallel": parallel,
+            "workers": configured_workers,
             "uncertainty_registry": str(registry_path.name) if registry_path.exists() else "none"
         },
         "storage": {
@@ -325,9 +365,9 @@ def execute_monte_carlo(config, project_dir):
         
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
     
-    from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions, plot_monte_carlo_convergence
     outputs_file = results_dir / "mc_sim.outputs.txt"
-    if outputs_file.exists():
+    if outputs_file.exists() and not compact_outputs:
+        from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions, plot_monte_carlo_convergence
         import copy
         idx_200 = None
         z_agl = flight.z[:, 1] - flight.env.elevation
@@ -354,6 +394,8 @@ def execute_monte_carlo(config, project_dir):
                                    sample_flights=trajectory_snapshot["samples"])
         plot_monte_carlo_distributions(outputs_file, results_dir, run_id)
         plot_monte_carlo_convergence(outputs_file, results_dir, run_id)
+    elif outputs_file.exists():
+        print("[Monte Carlo] Standalone plots and KML skipped in compact campaign mode; the master report will contain consolidated charts.")
 
     if is_campaign_active:
         print(f"[Campaign Mode] Monte Carlo failure outputs registered in campaign directory: {results_dir}")

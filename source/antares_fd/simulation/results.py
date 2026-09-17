@@ -35,6 +35,10 @@ def print_flight_summary(flight, project_dir=None):
         script_name = os.environ.get("ANTARES_CURRENT_SCENARIO") or Path(sys.argv[0]).stem
         campaign_dir_env = os.environ.get("ANTARES_CAMPAIGN_DIR")
         is_campaign_active = os.environ.get("ANTARES_CAMPAIGN_ACTIVE") == "1"
+        compact_outputs = (
+            is_campaign_active
+            and os.environ.get("ANTARES_COMPACT_OUTPUTS", "1") != "0"
+        )
 
         if campaign_dir_env:
             results_dir = Path(campaign_dir_env)
@@ -49,17 +53,22 @@ def print_flight_summary(flight, project_dir=None):
             results_dir.mkdir(parents=True, exist_ok=True)
             output_kml = results_dir / "trajectory.kml"
         
-        # Export KML
-        try:
-            from rocketpy.simulation.flight_data_exporter import FlightDataExporter
-            FlightDataExporter(flight).export_kml(
-                file_name=str(output_kml),
-                extrude=True,
-                altitude_mode="absolute"
-            )
-            print(f"\n[KML Export] Trajectory saved to: {output_kml}")
-        except Exception as e:
-            print(f"\n[KML Export Failed] {e}")
+        # Keep the nominal trajectory as the campaign's representative path.
+        # Exporting every deterministic scenario here duplicates information
+        # already summarized in the master report and consumes disk/time.
+        if not compact_outputs or script_name == "nominal":
+            try:
+                from rocketpy.simulation.flight_data_exporter import FlightDataExporter
+                FlightDataExporter(flight).export_kml(
+                    file_name=str(output_kml),
+                    extrude=True,
+                    altitude_mode="absolute"
+                )
+                print(f"\n[KML Export] Trajectory saved to: {output_kml}")
+            except Exception as e:
+                print(f"\n[KML Export Failed] {e}")
+        else:
+            print(f"\n[KML Export] Skipped for compact campaign output: {script_name}")
             
         # Export PDF Map (standalone only)
         if not is_campaign_active:

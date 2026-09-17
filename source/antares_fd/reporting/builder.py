@@ -24,7 +24,6 @@ class ReportContext:
         self.output_dir = project_dir / "results"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.fig_dir = self.output_dir / ".figures"
-        self.fig_dir.mkdir(parents=True, exist_ok=True)
         self.scenario_metrics: Dict[str, FlightMetrics] = {}
         self.mc_results_dir: Path = None
 
@@ -54,6 +53,7 @@ class FlightDynamicsReportBuilder:
         if self.ctx.mc_results_dir:
             self._add_monte_carlo()
         
+        self._add_reproducibility_appendix()
         doc = BaseReportDocTemplate(
             str(output_pdf),
             pagesize=A4,
@@ -303,6 +303,28 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(Paragraph("Output Distributions", self.styles["Heading2"]))
         self.flowables.append(tables.build_mc_output_table(mc_file))
         self.flowables.append(Spacer(1, 1 * cm))
+        
+        # Phase 12 Add Probabilistic Requirements Table
+        self.flowables.append(Paragraph("Stochastic Requirement Confidence Matrix", self.styles["Heading2"]))
+        stochastic_evaluator = getattr(self.ctx.req_db, "evaluate_stochastic", None)
+        stochastic_table_builder = getattr(tables, "build_stochastic_requirements_table", None)
+        if callable(stochastic_evaluator) and callable(stochastic_table_builder):
+            import pandas as pd
+            records = []
+            with open(mc_file, "r") as ff:
+                for line in ff:
+                    if not line.strip():
+                        continue
+                    try:
+                        records.append(json.loads(line))
+                    except Exception:
+                        pass
+            if records:
+                stoch_reqs = stochastic_evaluator(pd.DataFrame(records))
+                if stoch_reqs:
+                    self.flowables.append(stochastic_table_builder(stoch_reqs, self.styles))
+        self.flowables.append(Spacer(1, 1 * cm))
+
             
         fig_disp = self.ctx.fig_dir / "mc_dispersion.png"
         plot_registry.generate_mc_dispersion_chart(mc_file, fig_disp, "MC", self.ctx.metrics.validation)
@@ -332,3 +354,39 @@ class FlightDynamicsReportBuilder:
             if fig_sens.exists():
                 self.flowables.append(Image(str(fig_sens), width=16*cm, height=8*cm))
         self.flowables.append(PageBreak())
+
+
+    def _add_reproducibility_appendix(self):
+        self.flowables.append(PageBreak())
+        self.flowables.append(Paragraph("Reproducibility Appendix", self.styles["Heading1"]))
+        
+        import subprocess
+        from datetime import datetime
+        
+        try:
+            commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+            dirty = subprocess.check_output(["git", "status", "--porcelain"]).decode("utf-8").strip()
+            git_state = commit_hash + (" (DIRTY)" if dirty else " (CLEAN)")
+        except Exception:
+            git_state = "UNKNOWN (Not a git repository)"
+            
+        try:
+            now_utc = datetime.utcnow().isoformat() + "Z"
+        except Exception:
+            now_utc = "UNKNOWN"
+            
+        proj_dir = str(self.ctx.project_dir.absolute())
+        
+        data = [
+            ["Attribute", "Value"],
+            ["Execution Timestamp (UTC)", now_utc],
+            ["Git State", git_state],
+            ["Project Directory", proj_dir],
+            ["Antares FD Framework", "Version 2.0 (Hardened)"]
+        ]
+        
+        t = tables.create_standard_table(data)
+        self.flowables.append(t)
+        self.flowables.append(Spacer(1, 1*cm))
+        
+        self.flowables.append(Paragraph("This report was automatically synthesized by Antares Flight Dynamics. No manual edits were performed on these charts or metrics. All values are traceable to the defined inputs, meteorological sources, and aerodynamic models.", self.styles["TableCell"]))

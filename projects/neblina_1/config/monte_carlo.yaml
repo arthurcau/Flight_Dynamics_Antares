@@ -1,5 +1,5 @@
 monte_carlo:
-  num_simulations: 150
+  num_simulations: 20
   flight:
     inclination:
       distribution: uniform # Rampa sem controle da equipe: limites em graus

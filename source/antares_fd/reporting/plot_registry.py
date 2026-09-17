@@ -64,7 +64,7 @@ def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path
     thrust_vals = ts.thrust[mask]
     mass_vals = ts.mass[mask]
     
-    prop_vals = np.maximum(0.0, mass_vals - metrics.dry_mass)
+    prop_vals = np.maximum(0.0, mass_vals - metrics.burnout_mass)
     tw_vals = thrust_vals / (mass_vals * g0)
     
     dt = np.diff(t_eval, prepend=0)
@@ -89,7 +89,7 @@ def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path
     # 2. Total Mass & Propellant Mass
     ax2.plot(t_eval, mass_vals, color="#0B2545", linewidth=1.6, label="Total Vehicle Mass (kg)")
     ax2.plot(t_eval, prop_vals, color="#D97706", linestyle="-.", linewidth=1.4, label="Remaining Propellant (kg)")
-    ax2.axhline(metrics.dry_mass, color="#64748B", linestyle=":", linewidth=1.0, label=f"Dry Mass ({metrics.dry_mass:.2f} kg)")
+    ax2.axhline(metrics.burnout_mass, color="#64748B", linestyle=":", linewidth=1.0, label=f"Dry Mass ({metrics.burnout_mass:.2f} kg)")
     ax2.set_ylabel("Mass (kg)")
     ax2.legend(loc="upper right", fontsize=7.5)
     ax2.set_ylim(bottom=0)
@@ -259,7 +259,7 @@ def generate_stability_and_attitude_chart(metrics: FlightMetrics, output_path: P
     ax2.axhspan(1.5, 3.5, color="#10B981", alpha=0.15, label="Preferred Range (1.5 - 3.5 cal)")
     ax2.axhline(1.0, color="#DC2626", linestyle="--", linewidth=1.1, label="Min Stability Limit (1.0 cal)")
 
-    sm_mq = metrics.max_dynamic_pressure_static_margin
+    sm_mq = metrics.static_margin_max_q
     t_mq = metrics.max_q_time
     if sm_mq:
         ax2.plot(t_mq, sm_mq, marker="s", color="#D97706", markersize=6)
@@ -580,7 +580,9 @@ def generate_mc_dispersion_chart(outputs_file: Path, output_path: Path, run_id: 
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    # 140 DPI is sufficient for the chart's report size and keeps the
+    # consolidated PDF smaller than separate high-resolution MC exports.
+    fig.savefig(output_path, dpi=140)
     plt.close(fig)
     return output_path
 
@@ -656,7 +658,7 @@ def generate_mc_distributions_chart(outputs_file: Path, output_path: Path) -> Op
     fig.suptitle("Monte Carlo Output Distributions & Requirement Compliance", fontsize=10, y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    fig.savefig(output_path, dpi=140)
     plt.close(fig)
     return output_path
 
@@ -715,7 +717,7 @@ def generate_mc_convergence_chart(outputs_file: Path, output_path: Path) -> Opti
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    fig.savefig(output_path, dpi=140)
     plt.close(fig)
     return output_path
 

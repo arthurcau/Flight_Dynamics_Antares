@@ -60,6 +60,12 @@ def run_project_campaign(simulations_dir: Path) -> Path:
     os.environ["ANTARES_CAMPAIGN_DIR"] = str(campaign_dir)
     os.environ["ANTARES_CAMPAIGN_ACTIVE"] = "1"
     os.environ["ANTARES_CAMPAIGN_RUN_ID"] = run_id
+    # Campaign reports already contain the consolidated figures. Keep only the
+    # artifacts that are useful for reproducibility and review by default;
+    # callers can set ANTARES_COMPACT_OUTPUTS=0 to retain every legacy export.
+    previous_compact_outputs = os.environ.get("ANTARES_COMPACT_OUTPUTS")
+    compact_outputs = previous_compact_outputs != "0"
+    os.environ["ANTARES_COMPACT_OUTPUTS"] = "1" if compact_outputs else "0"
 
     print("\n" + "=" * 75)
     print("ANTARES FLIGHT DYNAMICS — UNIFIED SIMULATION CAMPAIGN")
@@ -174,6 +180,10 @@ def run_project_campaign(simulations_dir: Path) -> Path:
     os.environ.pop("ANTARES_CAMPAIGN_DIR", None)
     os.environ.pop("ANTARES_CAMPAIGN_ACTIVE", None)
     os.environ.pop("ANTARES_CAMPAIGN_RUN_ID", None)
+    if previous_compact_outputs is None:
+        os.environ.pop("ANTARES_COMPACT_OUTPUTS", None)
+    else:
+        os.environ["ANTARES_COMPACT_OUTPUTS"] = previous_compact_outputs
 
     print("\n" + "=" * 75)
     print("UNIFIED CAMPAIGN COMPLETE — ALL RESULTS CENTRALIZED IN ONE DIRECTORY")

@@ -4,6 +4,7 @@ Constructs the deterministc PDF report using the strict, single-source-of-truth 
 also handling multiple campaigns and Monte Carlo statistics.
 """
 from pathlib import Path
+import shutil
 from typing import Any, Optional, Dict
 import json
 import dataclasses
@@ -75,8 +76,20 @@ class FlightDynamicsReport:
             
         print(f"[Reporting] Master metrics saved: {json_path}")
         
-        # Generate the formal report
-        builder = FlightDynamicsReportBuilder(self.ctx)
-        builder.build_deterministic_report(output_path)
+        # Keep figures beside the report and remove them after ReportLab has
+        # embedded them. This avoids a persistent duplicate image cache for
+        # every campaign while preserving the final PDF contents.
+        previous_output_dir = self.ctx.output_dir
+        previous_fig_dir = self.ctx.fig_dir
+        self.ctx.output_dir = output_path.parent
+        self.ctx.fig_dir = output_path.parent / ".figures"
+        self.ctx.fig_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            builder = FlightDynamicsReportBuilder(self.ctx)
+            builder.build_deterministic_report(output_path)
+        finally:
+            shutil.rmtree(self.ctx.fig_dir, ignore_errors=True)
+            self.ctx.output_dir = previous_output_dir
+            self.ctx.fig_dir = previous_fig_dir
         print(f"[Reporting] Deterministic engineering report generated: {output_path}")
         return output_path
