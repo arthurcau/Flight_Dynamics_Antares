@@ -22,6 +22,7 @@ def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
     badge_colors = {
         "SATISFIED": ("#065F46", "#D1FAE5"),
         "PASS": ("#065F46", "#D1FAE5"),
+        "VALID": ("#065F46", "#D1FAE5"),
         "MARGINAL": ("#92400E", "#FEF3C7"),
         "WARNING": ("#92400E", "#FEF3C7"),
         "WARN (DRIFT)": ("#92400E", "#FEF3C7"),
@@ -32,7 +33,7 @@ def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
         "QUALIFIED": ("#065F46", "#D1FAE5"),
         "INFO": ("#1E40AF", "#DBEAFE"),
     }
-    fg, bg = badge_colors.get(status, ("#334155", "#F1F5F9"))
+    fg, bg = badge_colors.get(str(status).upper(), ("#334155", "#F1F5F9"))
     text = f'<font color="{fg}"><b>{status}</b></font>'
     badge_style = ParagraphStyle(
         name=f"Badge_{status}",
@@ -60,4 +61,33 @@ def create_standard_table(data_matrix: List[List[Any]]) -> Table:
     ]))
     return t
 
-# Rest of the old tables below (or we can just keep only this generic one if rewriting)
+def build_model_validity_envelope_table(validity_data: List[Dict[str, Any]], styles: Any) -> Table:
+    table_data = [["Domain & Parameter", "Simulated Peak", "Validity Envelope", "Status", "Note"]]
+    style_base = styles["TableCell"]
+    
+    for check in validity_data:
+        domain_param = f"{check.get('domain', '')}: {check.get('parameter', '')}"
+        sim = str(check.get('simulated', 'N/A'))
+        limit = str(check.get('validity_limit', 'None'))
+        status_val = str(check.get('status', 'INFO')).upper()
+        note = Paragraph(str(check.get('note', '')), style_base)
+        
+        status_badge = _get_badge(status_val, style_base)
+        table_data.append([domain_param, sim, limit, status_badge, note])
+        
+    return create_standard_table(table_data)
+
+def build_model_input_quality_table(quality_data: List[Dict[str, Any]], styles: Any) -> Table:
+    table_data = [["Parameter", "Source", "Classification", "Confidence"]]
+    style_base = styles["TableCell"]
+    
+    for q in quality_data:
+        param = str(q.get('parameter', ''))
+        source = str(q.get('source', ''))
+        classification = str(q.get('classification', ''))
+        confidence_val = str(q.get('confidence', '')).upper()
+        
+        conf_badge = _get_badge(confidence_val, style_base)
+        table_data.append([param, source, classification, conf_badge])
+        
+    return create_standard_table(table_data)
