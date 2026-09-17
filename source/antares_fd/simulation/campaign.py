@@ -125,6 +125,7 @@ def run_project_campaign(simulations_dir: Path) -> Path:
 
     # 5. Execute Monte Carlo Simulation (Single Run)
     mc_executed = False
+    mc_error = None
     if mc_scripts:
         primary_mc = mc_scripts[0]
         print(f"\n[Monte Carlo] Executing stochastic campaign: {primary_mc.stem}...")
@@ -140,6 +141,7 @@ def run_project_campaign(simulations_dir: Path) -> Path:
                     mc_executed = True
                     print(f"      -> Monte Carlo simulation finished successfully.")
         except Exception as e:
+            mc_error = e
             print(f"      -> [ERROR] Monte Carlo execution error: {e}")
         finally:
             os.environ.pop("ANTARES_CURRENT_SCENARIO", None)
@@ -160,6 +162,14 @@ def run_project_campaign(simulations_dir: Path) -> Path:
         scenario_flights=scenario_flights,
     )
     generated_pdf = report.generate(master_pdf_path)
+
+    # The report has consumed RocketPy's compatibility logs. Canonical Parquet
+    # artifacts and the immutable sample table are the archival representation
+    # for compact campaigns; remove the redundant line oriented exports.
+    if compact_outputs and mc_executed:
+        for redundant in campaign_dir.glob("mc_sim.*.txt"):
+            redundant.unlink(missing_ok=True)
+        (campaign_dir / "scenarios.csv").unlink(missing_ok=True)
 
     # 7. Write Consolidated Campaign Manifest
     manifest_path = campaign_dir / "manifest.yaml"
@@ -193,5 +203,8 @@ def run_project_campaign(simulations_dir: Path) -> Path:
     print(f"Master Metrics JSON: {campaign_dir / 'master_metrics.json'}")
     print(f"Manifest YAML      : {manifest_path}")
     print("=" * 75 + "\n")
+
+    if mc_error is not None:
+        raise RuntimeError(f"Monte Carlo campaign failed; report was written to {generated_pdf}") from mc_error
 
     return generated_pdf

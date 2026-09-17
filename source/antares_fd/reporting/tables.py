@@ -10,6 +10,7 @@ from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import yaml
+import pandas as pd
 
 from antares_fd.analysis.flight_metrics import FlightMetrics
 from .theme import (
@@ -191,13 +192,26 @@ def build_mc_output_table(outputs_file: Path) -> Table:
         
     records = []
     try:
-        with open(outputs_file, "r") as f:
-            for line in f:
-                if not line.strip(): continue
-                try:
-                    records.append(json.loads(line))
-                except Exception:
-                    pass
+        if outputs_file.suffix.lower() == ".parquet":
+            for row in pd.read_parquet(outputs_file).to_dict("records"):
+                records.append({
+                    "apogee": row.get("apogee", row.get("apogee_agl", 0.0)),
+                    "out_of_rail_velocity": row.get("out_of_rail_velocity", row.get("rail_exit_velocity", 0.0)),
+                    "max_mach_number": row.get("max_mach_number", row.get("max_mach", 0.0)),
+                    "max_dynamic_pressure": row.get("max_dynamic_pressure", 0.0),
+                    "x_impact": row.get("x_impact", row.get("landing_east", 0.0)),
+                    "y_impact": row.get("y_impact", row.get("landing_north", 0.0)),
+                    "impact_velocity": row.get("impact_velocity", row.get("touchdown_velocity", 0.0)),
+                    "t_final": row.get("t_final", row.get("flight_duration", 0.0)),
+                })
+        else:
+            with open(outputs_file, "r") as f:
+                for line in f:
+                    if not line.strip(): continue
+                    try:
+                        records.append(json.loads(line))
+                    except Exception:
+                        pass
     except Exception:
         pass
         

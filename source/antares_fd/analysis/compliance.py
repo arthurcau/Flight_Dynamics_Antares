@@ -183,7 +183,10 @@ def evaluate_compliance(metrics: Dict[str, Any]) -> List[ComplianceItem]:
 
     # 7. STR-REQ-012: Maximum Ascent Acceleration
     # Evaluates thrust/aerodynamic boost acceleration (excludes parachute opening shock)
-    max_ascent_g = metrics.get("kinematics", {}).get("max_total_acceleration", 0.0)
+    max_ascent_g = metrics.get("kinematics", {}).get(
+        "max_total_acceleration",
+        metrics.get("kinematics", {}).get("max_ascent_acceleration_g", 0.0),
+    )
     if max_ascent_g <= 18.0:
         status = "SATISFIED"
         msg = f"Ascent thrust g-load ({max_ascent_g:.1f} g) within structural airframe and avionics envelope."

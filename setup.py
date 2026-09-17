@@ -8,4 +8,5 @@ setup(
         "MAGI": "MAGI"
     },
     packages=["antares_fd", "MAGI"],
+    entry_points={"console_scripts": ["antares-fd=antares_fd.cli:main"]},
 )

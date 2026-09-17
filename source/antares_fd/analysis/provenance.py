@@ -126,10 +126,16 @@ def evaluate_model_validity(metrics: FlightMetrics) -> List[Dict[str, str]]:
     """
     Evaluates simulation metrics against physics and aerodynamic model limits.
     """
-    max_mach = metrics.max_mach
-    max_alpha = metrics.max_angle_of_attack
-    apogee_asl = metrics.apogee_asl
-    v_rail = metrics.rail_exit_velocity
+    if isinstance(metrics, dict):
+        max_mach = metrics.get("kinematics", {}).get("max_mach", 0.0)
+        max_alpha = metrics.get("aerodynamic_loads", {}).get("max_angle_of_attack_ascent_deg", 0.0)
+        apogee_asl = metrics.get("trajectory", {}).get("apogee_asl_m", 0.0)
+        v_rail = metrics.get("rail_dynamics", {}).get("rail_exit_velocity_ms", 0.0)
+    else:
+        max_mach = metrics.max_mach
+        max_alpha = metrics.max_angle_of_attack
+        apogee_asl = metrics.apogee_asl
+        v_rail = metrics.rail_exit_velocity
 
     validity_checks = [
         {

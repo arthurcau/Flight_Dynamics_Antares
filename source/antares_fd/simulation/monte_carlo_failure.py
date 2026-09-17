@@ -7,12 +7,17 @@ import numpy as np
 import random
 import os
 import copy
+import traceback
+import types
+import pandas as pd
 
 from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
 from antares_fd.config.exceptions import ConfigurationError
 from antares_fd.simulation.monte_carlo_storage import CampaignManager
 from antares_fd.simulation.monte_carlo_parameters import launch_angle_distribution
 from antares_fd.simulation.uncertainty import UncertaintyRegistry, SamplingPlan
+from antares_fd.simulation.uq_campaign import MonteCarloCampaign
+from antares_fd.simulation.uq_pipeline import finalize_campaign_analysis
 
 from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
 
@@ -33,6 +38,76 @@ def _patched_init(self, *args, **kwargs):
 TrapezoidalFins.__init__ = _patched_init
 # ---------------------------------------------------------------
 
+
+def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_event):
+    """RocketPy producer variant that assigns the frozen seed by case ID.
+
+    RocketPy's stock producer seeds once per worker. That makes a case's
+    random stream depend on scheduling. This drop-in producer keeps RocketPy's
+    simulation and serialization code, while reseeding all stochastic models
+    immediately after the monitor assigns a deterministic case index.
+    """
+    inputs_json = ""
+    sim_idx = -1
+    try:
+        while sim_monitor.keep_simulating():
+            sim_idx = sim_monitor.increment() - 1
+            case_seed = int(self._antares_case_seeds[sim_idx])
+            self.environment._set_stochastic(case_seed)
+            self.rocket._set_stochastic(case_seed)
+            self.flight._set_stochastic(case_seed)
+            self._antares_active_case_seed = case_seed
+            flight = self._MonteCarlo__run_single_simulation()
+            inputs_json = self._MonteCarlo__evaluate_flight_inputs(sim_idx)
+            outputs_json = self._MonteCarlo__evaluate_flight_outputs(flight, sim_idx)
+            mutex.acquire()
+            try:
+                if error_event.is_set():
+                    break
+                with open(self.input_file, "a", encoding="utf-8") as stream:
+                    stream.write(inputs_json)
+                with open(self.output_file, "a", encoding="utf-8") as stream:
+                    stream.write(outputs_json)
+                sim_monitor.print_update_status()
+            finally:
+                mutex.release()
+    except Exception:
+        mutex.acquire()
+        try:
+            with open(self.error_file, "a", encoding="utf-8") as stream:
+                stream.write(inputs_json)
+            print(f"Error on deterministic case {sim_idx}:\n{traceback.format_exc()}")
+            error_event.set()
+        finally:
+            mutex.release()
+
+
+def _failure_records(mc, samples, requested):
+    """Represent every missing case explicitly in the canonical failure table."""
+    successful = {
+        int(record.get("index", record.get("case_id")))
+        for record in getattr(mc, "outputs_log", [])
+        if isinstance(record, dict) and record.get("index", record.get("case_id")) is not None
+    }
+    seed_by_case = {}
+    if samples is not None and {"case_id", "seed"}.issubset(samples.columns):
+        seed_by_case = samples.set_index("case_id")["seed"].to_dict()
+    if successful:
+        requested = max(int(requested), max(successful) + 1)
+    return [
+        {
+            "case_id": case_id,
+            "seed": seed_by_case.get(case_id),
+            "exception_class": "RocketPySimulationError",
+            "short_error": "no scalar output was exported for this case",
+            "stage": "trajectory",
+            "worker": None,
+            "status": "FAILED",
+        }
+        for case_id in range(int(requested))
+        if case_id not in successful
+    ]
+
 def execute_monte_carlo(config, project_dir):
     """
     Central orchestrator for Monte Carlo campaigns.
@@ -43,10 +118,10 @@ def execute_monte_carlo(config, project_dir):
     if not mc_cfg:
         raise ConfigurationError("Monte Carlo configuration (monte_carlo.yaml) is missing or empty.")
         
-    num_sims = mc_cfg.get("num_simulations", 10)
+    num_sims = int(os.environ.get("ANTARES_MC_TARGET", mc_cfg.get("num_simulations", 10)))
     seed = mc_cfg.get("random_seed", 42)
     parallel = bool(mc_cfg.get("parallel", True))
-    configured_workers = mc_cfg.get("workers")
+    configured_workers = os.environ.get("ANTARES_MC_WORKERS", mc_cfg.get("workers"))
     if configured_workers is not None:
         try:
             configured_workers = int(configured_workers)
@@ -54,6 +129,12 @@ def execute_monte_carlo(config, project_dir):
             raise ConfigurationError("monte_carlo.workers must be an integer") from exc
         if configured_workers < 1:
             raise ConfigurationError("monte_carlo.workers must be greater than zero")
+    effective_workers = configured_workers
+    if parallel and effective_workers is None:
+        # RocketPy otherwise starts one process per logical CPU. Six workers is
+        # the conservative default measured for this project and can be
+        # overridden explicitly in the campaign YAML or CLI.
+        effective_workers = min(os.cpu_count() or 2, 6)
     
     # Force seed reproducibility
     np.random.seed(seed)
@@ -76,6 +157,30 @@ def execute_monte_carlo(config, project_dir):
         results_dir = project_dir.parents[0].parent / "results" / project_dir.name / run_id
         results_dir.mkdir(parents=True, exist_ok=True)
 
+    canonical_campaign = None
+    if is_campaign_active:
+        profile = str(os.environ.get("ANTARES_MC_PROFILE", mc_cfg.get("profile", "development")))
+        if profile == "official":
+            campaign_settings = {
+                "target_samples": num_sims,
+                "min_samples": int(mc_cfg.get("min_samples", 10000)),
+                "max_samples": int(os.environ.get("ANTARES_MC_MAX", mc_cfg.get("max_samples", 20000))),
+            }
+        else:
+            campaign_settings = {"target_samples": num_sims, "min_samples": num_sims, "max_samples": num_sims}
+        if mc_cfg.get("failure_policy"):
+            campaign_settings["failure_policy"] = mc_cfg.get("failure_policy")
+        canonical_campaign = MonteCarloCampaign(
+            project=project_dir.name,
+            root=project_dir.parents[1],
+            master_seed=int(seed),
+            profile=profile,
+            campaign_id=run_id,
+            config=campaign_settings,
+        )
+        config_hashes = canonical_campaign.snapshot_config(project_dir)
+        canonical_campaign.write_manifest("SAMPLING", extra={"configuration_hashes": config_hashes})
+
     # ---------------------------------------------------------------------------------
     # PHASE 1-3: DETERMINISTIC PRE-SAMPLING (No stochastic behavior defined inline)
     # ---------------------------------------------------------------------------------
@@ -95,8 +200,12 @@ def execute_monte_carlo(config, project_dir):
         plan = SamplingPlan(registry, num_sims, seed, len(env_ensemble))
         plan.export(results_dir / "scenarios.csv")
         samples_df = plan.samples
+        if canonical_campaign is not None:
+            samples_df = canonical_campaign.make_samples(registry_path, canonical_campaign.max_samples, len(env_ensemble))
     else:
         samples_df = None
+        if canonical_campaign is not None:
+            samples_df = canonical_campaign.make_samples(None, canonical_campaign.max_samples)
         
     # --- 3. Map Config to RocketPy Stochastics ---
     wind_x_std = 0.0
@@ -193,15 +302,40 @@ def execute_monte_carlo(config, project_dir):
         environment=stoch_env,
         rocket=stoch_rocket,
         flight=stoch_flight,
-        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
+        export_list=[
+            'apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity',
+            'max_mach_number', 'max_mach_number_time', 't_final',
+            'out_of_rail_velocity', 'out_of_rail_time', 'max_dynamic_pressure',
+            'max_dynamic_pressure_time', 'max_speed', 'max_speed_time',
+            'max_acceleration', 'max_acceleration_time',
+        ],
     )
     
-    manager = CampaignManager()
-    manager.start()
-    all_flights = manager.TrajectoryStore(seed)
+    manager = None
+    all_flights = None
+    if not compact_outputs:
+        manager = CampaignManager()
+        manager.start()
+        all_flights = manager.TrajectoryStore(seed)
     
     _orig_run_single = mc._MonteCarlo__run_single_simulation
+    deterministic_seeds = None
+    if canonical_campaign is not None and samples_df is not None and "seed" in samples_df:
+        deterministic_seeds = samples_df.sort_values("case_id")["seed"].astype("uint64").tolist()
+        mc._antares_case_seeds = deterministic_seeds
+        mc._antares_serial_case = already_done if "already_done" in locals() else 0
+
     def _patched_run_single(*args, **kwargs):
+        # Serial RocketPy execution does not expose a case seed hook. Set it
+        # immediately before the original RocketPy simulation. The parallel
+        # producer above sets _antares_active_case_seed itself.
+        if deterministic_seeds is not None and not hasattr(mc, "_antares_active_case_seed"):
+            serial_index = min(mc._antares_serial_case, len(deterministic_seeds) - 1)
+            case_seed = int(deterministic_seeds[serial_index])
+            mc._antares_serial_case += 1
+            mc.environment._set_stochastic(case_seed)
+            mc.rocket._set_stochastic(case_seed)
+            mc.flight._set_stochastic(case_seed)
         # 1. Run nominal flight
         flt_nom = _orig_run_single(*args, **kwargs)
         import copy
@@ -221,7 +355,8 @@ def execute_monte_carlo(config, project_dir):
         if idx_200 is None:
             try:
                 flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1], 'z': flt_nom.z[:, 1]}
-                all_flights.append(flt_data)
+                if all_flights is not None:
+                    all_flights.append(flt_data)
             except Exception: pass
             return flt_nom
             
@@ -245,7 +380,8 @@ def execute_monte_carlo(config, project_dir):
                 y_full = np.concatenate((flt_nom.y[:idx_200+1, 1], flt_fail.y[:, 1]))
                 z_full = np.concatenate((flt_nom.z[:idx_200+1, 1], flt_fail.z[:, 1]))
                 flt_data = {'x': x_full, 'y': y_full, 'z': z_full}
-                all_flights.append(flt_data)
+                if all_flights is not None:
+                    all_flights.append(flt_data)
             except Exception:
                 pass
             
@@ -265,40 +401,101 @@ def execute_monte_carlo(config, project_dir):
             print("Failed free fall sim:", e)
             try:
                 flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1], 'z': flt_nom.z[:, 1]}
-                all_flights.append(flt_data)
+                if all_flights is not None:
+                    all_flights.append(flt_data)
             except Exception: pass
             return flt_nom
             
     mc._MonteCarlo__run_single_simulation = _patched_run_single
+    if deterministic_seeds is not None and parallel:
+        mc._MonteCarlo__sim_producer = types.MethodType(_deterministic_sim_producer, mc)
 
     outputs_file_path = results_dir / "mc_sim.outputs.txt"
     already_done = 0
     if outputs_file_path.exists():
         with open(outputs_file_path, "r") as f:
             already_done = sum(1 for line in f if line.strip())
+    if (
+        already_done == 0
+        and canonical_campaign is not None
+        and (canonical_campaign.path / "outputs.parquet").exists()
+    ):
+        # Finished compact campaigns intentionally remove RocketPy's JSONL
+        # compatibility files, while an interrupted run may have left empty
+        # placeholders. Rehydrate only scalar records for resume; no
+        # trajectory is reconstructed and no stochastic input is regenerated.
+        cached_outputs = pd.read_parquet(canonical_campaign.path / "outputs.parquet")
+        mc.outputs_log = cached_outputs.to_dict("records")
+        already_done = len(mc.outputs_log)
+        mc.num_of_loaded_sims = already_done
             
-    remaining_sims = num_sims - already_done
+    batch_size = int(mc_cfg.get("batch_size", num_sims))
+    if batch_size < 1:
+        raise ConfigurationError("monte_carlo.batch_size must be greater than zero")
+    simulation_goal = num_sims
+    if canonical_campaign is not None and canonical_campaign.profile == "official":
+        simulation_goal = canonical_campaign.min_samples
+        existing_summary = canonical_campaign.path / "summary.json"
+        if already_done >= canonical_campaign.min_samples and existing_summary.exists():
+            try:
+                previous_summary = json.loads(existing_summary.read_text(encoding="utf-8"))
+                if not previous_summary.get("convergence", {}).get("required_metrics_converged", False):
+                    simulation_goal = canonical_campaign.next_target(already_done, converged=False)
+            except (OSError, json.JSONDecodeError):
+                pass
+    if deterministic_seeds is not None:
+        mc._antares_serial_case = already_done
     
     try:
-        if remaining_sims <= 0:
-            print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
+        if already_done >= simulation_goal:
+            print(f"[Monte Carlo] All {simulation_goal} simulations already completed in previous run. Skipping simulation.")
         else:
-            print(f"[Monte Carlo] Starting {remaining_sims} simulations (Resuming {already_done}/{num_sims}). Seed={seed}")
-            simulate_kwargs = {
-                "number_of_simulations": num_sims,
-                "append": already_done > 0,
-                "parallel": parallel,
-                "include_function_data": False,
-            }
-            if configured_workers is not None and parallel:
-                simulate_kwargs["n_workers"] = configured_workers
-            mc.simulate(**simulate_kwargs)
+            batch_number = len(list(results_dir.glob("batch_*.parquet")))
+            while already_done < simulation_goal:
+                target = min(simulation_goal, already_done + batch_size)
+                before = len(getattr(mc, "outputs_log", []))
+                print(f"[Monte Carlo] Starting batch {batch_number:05d}: target {target}/{simulation_goal} (completed {already_done}). Seed={seed}")
+                simulate_kwargs = {
+                    "number_of_simulations": target,
+                    "append": already_done > 0,
+                    "parallel": parallel,
+                    "include_function_data": False,
+                }
+                if effective_workers is not None and parallel:
+                    simulate_kwargs["n_workers"] = effective_workers
+                mc.simulate(**simulate_kwargs)
+                after = len(getattr(mc, "outputs_log", []))
+                if after <= before:
+                    break
+                if canonical_campaign is not None:
+                    batch_frame = pd.DataFrame(mc.outputs_log[before:after])
+                    if "case_id" not in batch_frame and "index" in batch_frame:
+                        batch_frame["case_id"] = batch_frame["index"]
+                    canonical_campaign.write_batch(batch_number, batch_frame)
+                already_done = after
+                batch_number += 1
+                if canonical_campaign is not None and canonical_campaign.profile == "official" and already_done >= canonical_campaign.min_samples:
+                    interim = finalize_campaign_analysis(
+                        canonical_campaign,
+                        project_dir,
+                        output_records=list(getattr(mc, "outputs_log", [])),
+                        input_records=list(getattr(mc, "inputs_log", [])),
+                        failure_records=[],
+                    )
+                    if interim["convergence"].get("required_metrics_converged"):
+                        break
+                    simulation_goal = canonical_campaign.next_target(already_done, converged=False)
 
-        trajectory_snapshot = all_flights.snapshot()
-        all_flights = trajectory_snapshot["trajectories"]
+        if all_flights is None:
+            trajectory_snapshot = {"trajectories": [], "samples": [], "seen": 0}
+            all_flights = []
+        else:
+            trajectory_snapshot = all_flights.snapshot()
+            all_flights = trajectory_snapshot["trajectories"]
     finally:
         mc._MonteCarlo__run_single_simulation = _orig_run_single
-        manager.shutdown()
+        if manager is not None:
+            manager.shutdown()
 
     
     try:
@@ -320,7 +517,7 @@ def execute_monte_carlo(config, project_dir):
         "failed": failed_cases,
         "seed": seed,
         "parallel": parallel,
-        "workers": configured_workers,
+        "workers": effective_workers,
     }
     with open(results_dir / "monte_carlo_summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
@@ -343,14 +540,14 @@ def execute_monte_carlo(config, project_dir):
             "seed": seed,
             "simulations": num_sims,
             "parallel": parallel,
-            "workers": configured_workers,
+            "workers": effective_workers,
             "uncertainty_registry": str(registry_path.name) if registry_path.exists() else "none"
         },
         "storage": {
             "include_function_data": False,
             "trajectories_seen": trajectory_snapshot["seen"],
             "retained_trajectories": len(all_flights),
-            "trajectory_policy": "four_endpoint_extrema_plus_five_reservoir_samples",
+            "trajectory_policy": "none_for_compact_campaign" if compact_outputs else "four_endpoint_extrema_plus_five_reservoir_samples",
         },
     }
     
@@ -358,12 +555,29 @@ def execute_monte_carlo(config, project_dir):
         yaml.dump(manifest, f, default_flow_style=False)
 
     if len(mc.outputs_log) < num_sims:
+        if canonical_campaign is not None:
+            finalize_campaign_analysis(
+                canonical_campaign,
+                project_dir,
+                output_records=list(getattr(mc, "outputs_log", [])),
+                input_records=list(getattr(mc, "inputs_log", [])),
+                failure_records=_failure_records(mc, samples_df, num_sims),
+            )
         raise RuntimeError(
             f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{num_sims} "
             f"simulations exported. Check worker errors and results in {results_dir}."
         )
         
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
+
+    if canonical_campaign is not None:
+        finalize_campaign_analysis(
+            canonical_campaign,
+            project_dir,
+            output_records=list(getattr(mc, "outputs_log", [])),
+            input_records=list(getattr(mc, "inputs_log", [])),
+            failure_records=_failure_records(mc, samples_df, num_sims),
+        )
     
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists() and not compact_outputs:

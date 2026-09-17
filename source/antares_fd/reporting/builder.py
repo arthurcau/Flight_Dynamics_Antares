@@ -84,7 +84,11 @@ class FlightDynamicsReportBuilder:
             "Validation Data": "COMPLETE" if self.ctx.metrics.validation else "NOT AVAILABLE"
         }
         
-        mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json" if self.ctx.mc_results_dir else None
+        mc_summary_file = None
+        if self.ctx.mc_results_dir:
+            mc_summary_file = self.ctx.mc_results_dir / "summary.json"
+            if not mc_summary_file.exists():
+                mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json"
         has_mc = mc_summary_file and mc_summary_file.exists()
         if has_mc:
             try:
@@ -272,9 +276,13 @@ class FlightDynamicsReportBuilder:
 
     def _add_monte_carlo(self):
         self.flowables.append(Paragraph("10. Monte Carlo Stochastic Analysis", self.styles["Heading1"]))
-        mc_file = self.ctx.mc_results_dir / "mc_sim.outputs.txt"
+        mc_file = self.ctx.mc_results_dir / "outputs.parquet"
+        if not mc_file.exists():
+            mc_file = self.ctx.mc_results_dir / "mc_sim.outputs.txt"
         
-        mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json"
+        mc_summary_file = self.ctx.mc_results_dir / "summary.json"
+        if not mc_summary_file.exists():
+            mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json"
         has_mc = False
         if mc_summary_file.exists():
             with open(mc_summary_file, 'r') as f:
@@ -284,11 +292,13 @@ class FlightDynamicsReportBuilder:
             s_data.append(["Campaign ID", mc_data.get("campaign_id", "Unknown")])
             s_data.append(["Status", mc_data.get("status", "Unknown").upper()])
             s_data.append(["Requested Cases", mc_data.get("requested", 0)])
-            s_data.append(["Completed Cases", mc_data.get("completed", 0)])
+            s_data.append(["Completed Cases", mc_data.get("completed", mc_data.get("successful", 0))])
             s_data.append(["Failed Cases", mc_data.get("failed", 0)])
+            if mc_data.get("warnings"):
+                s_data.append(["Warnings", "; ".join(mc_data["warnings"])])
             self.flowables.append(tables.create_standard_table(s_data))
             self.flowables.append(Spacer(1, 0.5 * cm))
-            has_mc = (mc_data.get("completed", 0) > 0)
+            has_mc = (mc_data.get("completed", mc_data.get("successful", 0)) > 0)
             
         # Add Input table
         self.flowables.append(Paragraph("Stochastic Inputs / Provenance", self.styles["Heading2"]))
@@ -296,7 +306,7 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(Spacer(1, 0.5 * cm))
         
         if not mc_file.exists() or not has_mc:
-            self.flowables.append(Paragraph("Monte Carlo execution completed, but RocketPy output text is missing.", self.styles["TableCell"]))
+            self.flowables.append(Paragraph("Monte Carlo execution completed, but canonical output data is missing.", self.styles["TableCell"]))
             return
 
         # Add Output table
@@ -310,15 +320,18 @@ class FlightDynamicsReportBuilder:
         stochastic_table_builder = getattr(tables, "build_stochastic_requirements_table", None)
         if callable(stochastic_evaluator) and callable(stochastic_table_builder):
             import pandas as pd
-            records = []
-            with open(mc_file, "r") as ff:
-                for line in ff:
-                    if not line.strip():
-                        continue
-                    try:
-                        records.append(json.loads(line))
-                    except Exception:
-                        pass
+            if mc_file.suffix.lower() == ".parquet":
+                records = __import__("pandas").read_parquet(mc_file).to_dict("records")
+            else:
+                records = []
+                with open(mc_file, "r") as ff:
+                    for line in ff:
+                        if not line.strip():
+                            continue
+                        try:
+                            records.append(json.loads(line))
+                        except Exception:
+                            pass
             if records:
                 stoch_reqs = stochastic_evaluator(pd.DataFrame(records))
                 if stoch_reqs:
@@ -326,20 +339,26 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(Spacer(1, 1 * cm))
 
             
-        fig_disp = self.ctx.fig_dir / "mc_dispersion.png"
-        plot_registry.generate_mc_dispersion_chart(mc_file, fig_disp, "MC", self.ctx.metrics.validation)
+        fig_disp = self.ctx.mc_results_dir / "plots" / "landing_dispersion.png"
+        if not fig_disp.exists():
+            fig_disp = self.ctx.fig_dir / "mc_dispersion.png"
+            plot_registry.generate_mc_dispersion_chart(mc_file, fig_disp, "MC", self.ctx.metrics.validation)
         if fig_disp.exists():
             self.flowables.append(Image(str(fig_disp), width=16*cm, height=12*cm))
             self.flowables.append(Spacer(1, 1 * cm))
             
-        fig_dist = self.ctx.fig_dir / "mc_distributions.png"
-        plot_registry.generate_mc_distributions_chart(mc_file, fig_dist)
+        fig_dist = self.ctx.mc_results_dir / "plots" / "apogee_distribution.png"
+        if not fig_dist.exists():
+            fig_dist = self.ctx.fig_dir / "mc_distributions.png"
+            plot_registry.generate_mc_distributions_chart(mc_file, fig_dist)
         if fig_dist.exists():
             self.flowables.append(Image(str(fig_dist), width=16*cm, height=11*cm))
             self.flowables.append(PageBreak())
             
-        fig_conv = self.ctx.fig_dir / "mc_convergence.png"
-        plot_registry.generate_mc_convergence_chart(mc_file, fig_conv)
+        fig_conv = self.ctx.mc_results_dir / "plots" / "convergence_apogee.png"
+        if not fig_conv.exists():
+            fig_conv = self.ctx.fig_dir / "mc_convergence.png"
+            plot_registry.generate_mc_convergence_chart(mc_file, fig_conv)
         if fig_conv.exists():
             self.flowables.append(Image(str(fig_conv), width=16*cm, height=10*cm))
             self.flowables.append(PageBreak())

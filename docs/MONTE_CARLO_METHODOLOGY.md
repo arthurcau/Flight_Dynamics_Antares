@@ -21,3 +21,19 @@ Every sampled parameter must be attached to an `UncertaintyRegistry` configurati
 ## 4. Convergence & Sensitivity 
 The framework is equipped to progressively test batch convergence limits against standard tolerance intervals. Results should output Spearman rank charts determining the strongest sensitivity drivers natively against compliance requirements (e.g., Apogee margin, not just Apogee magnitude). 
 Measurements will eventually overwrite all `LEGACY_ASSUMPTIONS`, progressively feeding flight telemetry to continuously calibrate the pipeline.
+
+## 5. Canonical campaign artifacts
+
+The implementation now freezes the input table at `samples/inputs.parquet`,
+assigns a case-local `SeedSequence` seed, writes scalar result batches with
+Zstandard compression and finalizes `statistics.parquet`,
+`convergence.parquet`, `confidence.parquet`, `sensitivity.parquet`,
+`compliance.parquet`, `representative_cases.parquet` and `summary.json`.
+The report and future Award Brief render these artifacts rather than repeating
+the statistical calculations. Missing scalar outputs are represented in
+`failures.parquet`.
+
+Official profiles use a 10,000 case minimum and a 20,000 case ceiling. At
+least three recent configured checkpoints must satisfy each metric's tolerance
+before the campaign is marked converged. A campaign that reaches its ceiling
+without that evidence is explicitly marked `COMPLETE_NOT_CONVERGED`.
