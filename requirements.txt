@@ -6,3 +6,4 @@ multiprocess
 pandas
 scikit-learn
 xarray
+reportlab>=4.0.0

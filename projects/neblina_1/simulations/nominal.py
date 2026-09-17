@@ -5,11 +5,12 @@ Nominal Flight Simulation
 import sys
 from pathlib import Path
 
-# Ensures the core 'Source' package can be imported
+# Ensures core packages ('source' and 'MAGI' root) can be imported
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SOURCE_DIR = PROJECT_ROOT / "source"
 if str(SOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(SOURCE_DIR))
+if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from antares_fd.config import load_project_config

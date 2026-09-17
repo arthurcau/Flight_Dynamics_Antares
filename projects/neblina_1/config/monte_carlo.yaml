@@ -1,10 +1,14 @@
 monte_carlo:
-  num_simulations: 1000
+  num_simulations: 150
   flight:
     inclination:
-     std: 5.0 # Desvio padrão da inclinação da rampa em graus
+      distribution: uniform # Rampa sem controle da equipe: limites em graus
+      min: 70.0
+      max: 90.0
     heading:
-     std: 10.0 # Desvio padrão do azimute (heading) da rampa em graus
+      distribution: uniform # ±10 graus em torno dos 240 graus nominais
+      min: 230.0
+      max: 250.0
     # rail_length:
     #   std: 0.1 # Desvio padrão do comprimento da rampa em metros
   environment:
@@ -13,8 +17,8 @@ monte_carlo:
      factor_std: 0.2 # We will multiply the deterministic wind by (1 + N(0, 0.2))
     wind_velocity_y:
      factor_std: 0.2 # We will multiply the deterministic wind by (1 + N(0, 0.2))
-    # elevation:
-    #   std: 10.0 # Desvio padrão da elevação do local de lançamento em metros
+    elevation:
+      std: 5.0 # Desvio padrão da elevação do local de lançamento em metros
     # gravity:
     #   std: 0.01 # Desvio padrão da aceleração da gravidade em m/s^2
     latitude:
@@ -43,9 +47,9 @@ monte_carlo:
     dry_inertia_23:
       std: 0.001 # Desvio padrão da inércia seca yz do motor em kg*m^2
     nozzle_radius:
-      std: 0.001 # Desvio padrão do raio da tubeira em metros
+      std: 0.0001 # Desvio padrão do raio da tubeira em metros
     grain_density:
-      std: 5.0 # Desvio padrão da densidade do grão propelente em kg/m^3
+      std: 1.0 # Desvio padrão da densidade do grão propelente em kg/m^3
     grain_outer_radius:
       std: 0.001 # Desvio padrão do raio externo do grão em metros
     grain_initial_inner_radius:
@@ -64,13 +68,13 @@ monte_carlo:
       std: 0.0005 # Desvio padrão do raio da garganta da tubeira em metros
   vehicle:
     mass:
-     std: 0.1 # Desvio padrão da massa do foguete em kg
+     std: 0.01 # Desvio padrão da massa do foguete em kg
     power_off_drag_factor:
      std: 0.1 # 10% uncertainty no coeficiente de arrasto sem propulsão
     power_on_drag_factor:
      std: 0.1 # 10% uncertainty no coeficiente de arrasto com propulsão
-    # radius:
-    #   std: 0.005 # Desvio padrão do raio do foguete em metros
+    radius:
+      std: 0.0002 # Desvio padrão do raio do foguete em metros
     # inertia_11:
     #   std: 0.1 # Desvio padrão da inércia do foguete (eixo x) em kg*m^2
     # inertia_22:
@@ -83,5 +87,5 @@ monte_carlo:
     #   std: 0.01 # Desvio padrão da inércia do foguete xz em kg*m^2
     # inertia_23:
     #   std: 0.01 # Desvio padrão da inércia do foguete yz em kg*m^2
-    # center_of_mass_without_motor:
-    #   std: 0.05 # Desvio padrão da posição do centro de massa (sem motor) em metros
+    center_of_mass_without_motor:
+      std: 0.001 # Desvio padrão da posição do centro de massa (sem motor) em metros

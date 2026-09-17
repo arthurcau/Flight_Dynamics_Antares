@@ -7,7 +7,7 @@ import matplotlib.backends.backend_pdf
 
 from .statistics import calculate_covariance_ellipse
 
-def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str, nominal_flight=None, nominal_flight_fail=None, all_flights=None):
+def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str, nominal_flight=None, nominal_flight_fail=None, all_flights=None, sample_flights=None):
     """
     Parses outputs JSONL file to plot the 2D landing dispersion with probability ellipses.
     """
@@ -415,7 +415,8 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
             # Optionally write 5 random Monte Carlo 3D outliers to see the dispersion cone in the sky!
             if all_flights is not None and len(all_flights) > 0:
                 import random
-                sample_flights = random.sample(list(all_flights), min(5, len(all_flights)))
+                if sample_flights is None:
+                    sample_flights = random.sample(list(all_flights), min(5, len(all_flights)))
                 for idx, flt in enumerate(sample_flights):
                     if 'z' in flt:
                         kml.write(f"    <Placemark>\n")
