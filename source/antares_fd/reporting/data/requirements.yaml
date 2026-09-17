@@ -1,0 +1,80 @@
+requirements:
+  RAIL_EXIT_VELOCITY:
+    id: FD-LAUNCH-001
+    description: "Vehicle must leave the launch rail with sufficient velocity for aerodynamic stability."
+    metric: "rail_exit_velocity"
+    operator: ">="
+    limit: 25.0  # Actually 30.0 is common, SAC is 30.0 m/s
+    units: "m/s"
+    source: "LASC / SAC Rulebook"
+    type: "requirement"
+
+  STATIC_MARGIN_MIN:
+    id: FD-STABILITY-001
+    description: "Static margin must remain strictly positive during the entire burn phase."
+    metric: "static_margin_min_burn"
+    operator: ">="
+    limit: 1.5
+    units: "cal"
+    source: "Engineering Engineering Guideline"
+    type: "requirement"
+  
+  STATIC_MARGIN_MAX:
+    id: FD-STABILITY-002
+    description: "Static margin must not exceed highly overstable limits causing extreme weathercocking."
+    metric: "static_margin_max_burn"
+    operator: "<="
+    limit: 3.5
+    units: "cal"
+    source: "Engineering Guideline"
+    type: "requirement"
+
+  MAX_ACCELERATION:
+    id: FD-LOADS-001
+    description: "Maximum airframe acceleration (thrust + aero) during ascent phase."
+    metric: "max_ascent_acceleration_g"
+    operator: "<="
+    limit: 20.0
+    units: "g"
+    source: "Airframe Structural Envelope"
+    type: "guideline"
+
+  PARACHUTE_SHOCK:
+    id: REC-LOADS-001
+    description: "Maximum instantaneous opening shock deceleration."
+    metric: "max_total_acceleration_g"
+    operator: "<="
+    limit: 45.0
+    units: "g"
+    source: "Airframe Structural Envelope"
+    type: "guideline"
+
+  DROGUE_DESCENT:
+    id: REC-DESCENT-001
+    description: "Drogue parachute terminal descent rate."
+    metric: "drogue_sink_rate_ms"
+    operator: "between"
+    limit: [15.0, 30.0]
+    units: "m/s"
+    source: "LASC / SAC Rulebook"
+    type: "requirement"
+  
+  MAIN_DESCENT:
+    id: REC-DESCENT-002
+    description: "Main parachute terminal descent rate for safe kinetic energy ground impact."
+    metric: "main_sink_rate_ms"
+    operator: "between"
+    limit: [3.0, 7.5]
+    units: "m/s"
+    source: "LASC / SAC Rulebook"
+    type: "requirement"
+    
+  IMPACT_KINETIC_ENERGY:
+    id: REC-IMPACT-001
+    description: "Total kinetic energy at touchdown."
+    metric: "touchdown_kinetic_energy"
+    operator: "<="
+    limit: 100.0  # SAC 100 J for section if unseparated, 100 J limit
+    units: "J"
+    source: "LASC / SAC Rulebook"
+    type: "requirement"
