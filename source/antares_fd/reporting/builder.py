@@ -394,7 +394,9 @@ class FlightDynamicsReportBuilder:
         except Exception:
             now_utc = "UNKNOWN"
             
-        proj_dir = str(self.ctx.project_dir.absolute())
+        # Reports must be portable and must not expose a developer's local
+        # checkout path.  The canonical project identity is sufficient.
+        proj_dir = f"projects/{self.ctx.project_dir.name}"
         
         data = [
             ["Attribute", "Value"],

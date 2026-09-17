@@ -21,16 +21,9 @@ def main():
     # 1. Load configuration
     config = load_project_config(PROJECT_DIR)
     
-    # 2. SCENARIO OVERRIDES: Disable drogue and set main trigger to apogee
-    for device in config.recovery.get("devices", []):
-        if device.get("id") == "drogue":
-            device["enabled"] = False
-        elif device.get("id") == "main":
-            device["trigger"] = {"type": "apogee"}
-            device["name"] = "Main Parachute (At Apogee)"
-            
-    # 3. Execute scenario
-    flight = execute_scenario(config, PROJECT_DIR)
+    # 2. Execute the canonical scenario override without mutating nominal
+    # configuration shared by other deterministic or stochastic cases.
+    flight = execute_scenario(config, PROJECT_DIR, scenario_id="main_at_apogee")
     
     return flight
 

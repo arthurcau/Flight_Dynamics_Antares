@@ -60,10 +60,15 @@ class FlightDynamicsReport:
         req_yaml = self.project_dir.parents[1] / "source" / "antares_fd" / "reporting" / "data" / "requirements.yaml"
         self.req_db = RequirementDB(req_yaml)
         
-        # Context Initialization
-        self.ctx = ReportContext(self.project_dir, self.metrics, self.req_db)
-        self.ctx.scenario_metrics = self.scenario_metrics
-        self.ctx.mc_results_dir = self.mc_results_dir
+        # Artifact reports are intentionally renderer-only.  Constructing the
+        # legacy ReportContext here would re-evaluate validity against a
+        # partially populated namespace and could make a saved campaign
+        # impossible to render.  VectorReportRenderer consumes the canonical
+        # artifacts directly and never reruns physics.
+        self.ctx = None if artifact_dir else ReportContext(self.project_dir, self.metrics, self.req_db)
+        if self.ctx is not None:
+            self.ctx.scenario_metrics = self.scenario_metrics
+            self.ctx.mc_results_dir = self.mc_results_dir
 
     @classmethod
     def from_artifacts(cls, artifact_dir: Path, project_dir: Optional[Path] = None):

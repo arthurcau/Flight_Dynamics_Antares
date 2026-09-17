@@ -124,6 +124,18 @@ def test_model_validity_bounds():
         assert c["status"] == "QUALIFIED"
 
 
+def test_provenance_uses_configured_metadata_without_invented_measurements():
+    project_dir = Path(__file__).parents[2] / "projects" / "neblina_1"
+    repro = collect_reproducibility_data(project_dir)
+    rows = repro["input_quality"]
+    assert rows
+    assert all("Laboratory Precision Scale" not in str(row) for row in rows)
+    assert all("Dual Knife-Edge Balance Rig" not in str(row) for row in rows)
+    assert any(row["classification"] == "UNKNOWN" for row in rows)
+    assert all("C:\\Users\\" not in str(row) for row in rows)
+    assert len(repro["config_hashes"]["vehicle.yaml"]) == 64
+
+
 def test_monte_carlo_sensitivity_analysis(tmp_path):
     outputs_file = tmp_path / "mc_sim.outputs.txt"
     inputs_file = tmp_path / "mc_sim.inputs.txt"

@@ -12,6 +12,7 @@ Guarantees that:
 
 import sys
 import os
+import json
 import datetime
 import importlib.util
 from pathlib import Path
@@ -21,11 +22,17 @@ import yaml
 
 from antares_fd.config import load_project_config
 from antares_fd.reporting import FlightDynamicsReport
+from antares_fd.simulation.scenarios import scenario_ids as configured_scenario_ids
+from antares_fd.simulation.scenarios import apply_scenario
+from antares_fd.simulation.uq_campaign import StochasticScenarioCampaign, PROFILES
+from antares_fd.analysis.metrics import extract_flight_metrics
+from antares_fd.analysis.scenario_uq import deterministic_scenario_consistency
 
 
 SCENARIO_NAME_MAP = {
     "nominal": "Nominal Flight",
-    "balistic": "Ballistic Free-Fall",
+    "balistic": "Ballistic Free-Fall",  # legacy project filename
+    "ballistic": "Ballistic Free-Fall",
     "main_at_apogee": "Main at Apogee",
     "separation_at_main_opening": "Separation at Main",
     "only_reefing": "Only Reefing Descent",
@@ -91,6 +98,16 @@ def run_project_campaign(simulations_dir: Path) -> Path:
         else:
             deterministic_scripts.append(s)
 
+    # ``monte_carlo_failure.py`` is a project-level compatibility wrapper in
+    # Neblina 1, while ``monte_carlo.py`` is the canonical entry point that
+    # already dispatches all configured scenarios.  Counting both as
+    # campaigns is misleading and can make a future runner execute the same
+    # campaign twice.  Keep the failure wrapper available when it is the only
+    # Monte Carlo entry point in another project.
+    canonical_mc = [path for path in mc_scripts if path.stem.lower() in {"monte_carlo", "montecarlo"}]
+    if canonical_mc:
+        mc_scripts = canonical_mc + [path for path in mc_scripts if path.stem.lower() not in {"monte_carlo_failure", "montecarlo_failure"}]
+
     # Put nominal first
     deterministic_scripts.sort(key=lambda p: 0 if p.stem.lower() == "nominal" else 1)
 
@@ -125,33 +142,73 @@ def run_project_campaign(simulations_dir: Path) -> Path:
         finally:
             os.environ.pop("ANTARES_CURRENT_SCENARIO", None)
 
-    # 5. Execute Monte Carlo Simulation (Single Run)
+    # 5. Execute one shared stochastic campaign for every configured scenario.
+    # All scenarios point at the same immutable sample table and receive the
+    # same case-local seeds, which makes the eventual paired comparison valid.
     mc_executed = False
     mc_error = None
+    scenario_campaign = None
     if mc_scripts:
         primary_mc = mc_scripts[0]
-        print(f"\n[Monte Carlo] Executing stochastic campaign: {primary_mc.stem}...")
-        os.environ["ANTARES_CURRENT_SCENARIO"] = primary_mc.stem
-        try:
-            spec = importlib.util.spec_from_file_location(f"sim_{primary_mc.stem}", str(primary_mc))
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                sys.modules[f"sim_{primary_mc.stem}"] = mod
-                spec.loader.exec_module(mod)
-                if hasattr(mod, "main"):
-                    mod.main()
-                    mc_executed = True
-                    print(f"      -> Monte Carlo simulation finished successfully.")
-        except Exception as e:
-            mc_error = e
-            print(f"      -> [ERROR] Monte Carlo execution error: {e}")
-        finally:
-            os.environ.pop("ANTARES_CURRENT_SCENARIO", None)
+        base_config = load_project_config(project_dir)
+        mc_cfg = base_config.monte_carlo or {}
+        profile = str(mc_cfg.get("profile", "development"))
+        if profile not in PROFILES:
+            profile = "development"
+        target = int(mc_cfg.get("num_simulations", PROFILES[profile]["target_samples"]))
+        scenario_campaign = StochasticScenarioCampaign(
+            project_dir.name,
+            project_root,
+            master_seed=int(mc_cfg.get("random_seed", 42)),
+            profile=profile,
+            campaign_id=run_id,
+            config={"target_samples": target, "min_samples": target, "max_samples": int(PROFILES[profile].get("max_samples", target))},
+            scenario_ids=tuple(configured_scenario_ids(base_config)),
+        )
+        registry = project_dir / "config" / "uncertainties.yaml"
+        scenario_campaign.ensure_samples(registry if registry.exists() else None)
+        scenario_campaign.write_manifest("SAMPLING", profile=profile)
+        for scenario_id in scenario_campaign.scenario_ids:
+            print(f"\n[Monte Carlo] Executing {scenario_id}: {primary_mc.stem}...")
+            os.environ["ANTARES_CURRENT_SCENARIO"] = primary_mc.stem
+            os.environ["ANTARES_MC_SCENARIO"] = scenario_id
+            os.environ["ANTARES_MC_TARGET"] = str(target)
+            os.environ["ANTARES_MC_PROFILE"] = profile
+            try:
+                spec = importlib.util.spec_from_file_location(f"sim_{primary_mc.stem}_{scenario_id}", str(primary_mc))
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[f"sim_{primary_mc.stem}_{scenario_id}"] = mod
+                    spec.loader.exec_module(mod)
+                    if hasattr(mod, "main"):
+                        mod.main()
+                        mc_executed = True
+                        print(f"      -> {scenario_id} completed successfully.")
+            except Exception as e:
+                mc_error = e
+                print(f"      -> [ERROR] {scenario_id} Monte Carlo error: {e}")
+                break
+            finally:
+                os.environ.pop("ANTARES_CURRENT_SCENARIO", None)
+                os.environ.pop("ANTARES_MC_SCENARIO", None)
+        if scenario_campaign is not None and mc_executed:
+            scenario_campaign.finalize_paired_comparison()
 
     # 6. Generate the SINGLE UNIFIED MASTER PDF REPORT
     print("\n[Report] Synthesizing Single Unified Master PDF Report...")
     cfg_nominal = load_project_config(project_dir)
     flight_nominal = scenario_flights.get("Nominal Flight") or (next(iter(scenario_flights.values())) if scenario_flights else None)
+
+    if scenario_flights:
+        reverse_names = {label_id: scenario_id for scenario_id, label_id in SCENARIO_NAME_MAP.items()}
+        deterministic_metrics = {}
+        for label, flight in scenario_flights.items():
+            scenario_id = reverse_names.get(label, label.lower().replace(" ", "_"))
+            scenario_config = apply_scenario(cfg_nominal, scenario_id) if scenario_id in {"nominal", "main_at_apogee", "only_reefing", "ballistic", "drogue_only"} else cfg_nominal
+            deterministic_metrics[scenario_id] = extract_flight_metrics(flight, scenario_config, project_dir)
+        (campaign_dir / "deterministic_scenario_consistency.json").write_text(
+            json.dumps(deterministic_scenario_consistency(deterministic_metrics), indent=2), encoding="utf-8"
+        )
 
     master_pdf_path = campaign_dir / "flight_dynamics_report.pdf"
 
@@ -192,6 +249,8 @@ def run_project_campaign(simulations_dir: Path) -> Path:
     os.environ.pop("ANTARES_CAMPAIGN_DIR", None)
     os.environ.pop("ANTARES_CAMPAIGN_ACTIVE", None)
     os.environ.pop("ANTARES_CAMPAIGN_RUN_ID", None)
+    os.environ.pop("ANTARES_MC_TARGET", None)
+    os.environ.pop("ANTARES_MC_PROFILE", None)
     if previous_compact_outputs is None:
         os.environ.pop("ANTARES_COMPACT_OUTPUTS", None)
     else:

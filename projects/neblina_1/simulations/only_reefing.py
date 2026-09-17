@@ -21,25 +21,9 @@ def main():
     # 1. Load configuration
     config = load_project_config(PROJECT_DIR)
     
-    # 2. SCENARIO OVERRIDES: 
-    # Models a single main parachute that opens reefed at apogee, and disreefs 
-    # at the specified main altitude. 
-    main_cd_s = None
-    for device in config.recovery.get("devices", []):
-        if device.get("id") == "main":
-            main_cd_s = device.get("aerodynamics", {}).get("cd_s")
-            device["name"] = "Main Parachute (Disreefed)"
-
-    for device in config.recovery.get("devices", []):
-        if device.get("id") == "drogue":
-            # The drogue acts as the reefed state of the main parachute.
-            device["name"] = "Main Parachute (Reefed)"
-            if main_cd_s is not None:
-                # Example: Reefed state has 15% of the fully open Cd*S
-                device["aerodynamics"]["cd_s"] = main_cd_s * 0.15
-
-    # 3. Execute scenario
-    flight = execute_scenario(config, PROJECT_DIR)
+    # 2. Execute the canonical reefed recovery override.  The override is
+    # applied to a deep copy by execute_scenario.
+    flight = execute_scenario(config, PROJECT_DIR, scenario_id="only_reefing")
     
     return flight
 

@@ -128,6 +128,53 @@ def landing_dispersion(frame: pd.DataFrame, confidence_levels: Sequence[float] =
     }
 
 
+def empirical_landing_surface(frame: pd.DataFrame, bins: int = 40) -> dict[str, Any]:
+    """Return an empirical occupancy density for ENU landing coordinates."""
+    if not {"landing_east", "landing_north"}.issubset(frame.columns):
+        return {"status": "NOT APPLICABLE"}
+    points = frame[["landing_east", "landing_north"]].apply(pd.to_numeric, errors="coerce").dropna().to_numpy(float)
+    if len(points) < 2:
+        return {"status": "INSUFFICIENT DATA"}
+    density, east_edges, north_edges = np.histogram2d(points[:, 0], points[:, 1], bins=bins, density=True)
+    probability, _, _ = np.histogram2d(points[:, 0], points[:, 1], bins=[east_edges, north_edges], density=False)
+    probability = probability / len(points)
+    return {
+        "status": "AVAILABLE", "method": "empirical_2d_histogram",
+        "density": density.tolist(), "probability": probability.tolist(),
+        "east_edges": east_edges.tolist(), "north_edges": north_edges.tolist(),
+        "sample_count": int(len(points)),
+        "definition": "empirical occupancy density; no Gaussian assumption",
+    }
+
+
+def empirical_containment_levels(surface: Mapping[str, Any], levels: Sequence[float] = (0.50, 0.80, 0.90, 0.95, 0.99)) -> pd.DataFrame:
+    """Compute highest-density histogram thresholds for empirical contours."""
+    if surface.get("status") != "AVAILABLE":
+        return pd.DataFrame()
+    density = np.asarray(surface.get("density", []), dtype=float)
+    probability = np.asarray(surface.get("probability", []), dtype=float)
+    if density.size == 0 or probability.shape != density.shape:
+        return pd.DataFrame()
+    rows = []
+    for level in levels:
+        order = np.argsort(density.ravel())[::-1]
+        cumulative = np.cumsum(probability.ravel()[order])
+        index = int(np.searchsorted(cumulative, float(level), side="left"))
+        threshold = float(density.ravel()[order[min(index, len(order) - 1)]])
+        rows.append({"probability": float(level), "density_threshold": threshold, "method": "empirical_highest_density_histogram"})
+    return pd.DataFrame(rows)
+
+
+def ecdf(frame: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Return the empirical CDF for one output column."""
+    if column not in frame:
+        return pd.DataFrame(columns=["value", "probability"])
+    values = np.sort(_numeric(frame[column]))
+    if not len(values):
+        return pd.DataFrame(columns=["value", "probability"])
+    return pd.DataFrame({"value": values, "probability": np.arange(1, len(values) + 1, dtype=float) / len(values)})
+
+
 def convergence_table(frame: pd.DataFrame, checkpoints: Sequence[int], criteria: Mapping[str, Mapping[str, float]], window: int = 3) -> pd.DataFrame:
     """Evaluate output-specific stability using existing result prefixes."""
     rows: list[dict[str, Any]] = []
@@ -143,9 +190,16 @@ def convergence_table(frame: pd.DataFrame, checkpoints: Sequence[int], criteria:
             if len(series) < checkpoint:
                 continue
             q = criterion.get("quantile")
-            if criterion.get("derived") == "landing_ellipse_95_major":
+            if str(criterion.get("derived", "")).startswith("landing_ellipse_95_"):
                 prefix = frame.iloc[:checkpoint]
-                value = float(landing_dispersion(prefix)["ellipses"]["0.95"]["major_axis"])
+                ellipse = landing_dispersion(prefix).get("ellipses", {}).get("0.95", {})
+                derived = str(criterion["derived"])
+                if derived.endswith("major"):
+                    value = float(ellipse.get("major_axis", np.nan))
+                elif derived.endswith("minor"):
+                    value = float(ellipse.get("minor_axis", np.nan))
+                else:
+                    value = float(np.pi * ellipse.get("major_axis", 0.0) * ellipse.get("minor_axis", 0.0))
             else:
                 value = float(np.quantile(series[:checkpoint], q)) if q is not None else float(np.mean(series[:checkpoint]))
             values.append(value)
@@ -201,9 +255,28 @@ def sensitivity_stability_table(inputs: pd.DataFrame, outputs: pd.DataFrame, che
     return pd.DataFrame(rows)
 
 
+def _align_case_frames(inputs: pd.DataFrame, outputs: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Align stochastic inputs and outputs by immutable case ID.
+
+    RocketPy may preserve a one-based log index while the canonical artifact
+    uses zero-based case IDs.  Positional concatenation or boolean masks based
+    on those unrelated indexes can silently associate the wrong input with an
+    output, or raise Pandas' ``Unalignable boolean Series`` error.  Case ID is
+    the only valid join key for campaign analysis.
+    """
+    if "case_id" in inputs and "case_id" in outputs:
+        left = inputs.drop_duplicates("case_id", keep="last").set_index("case_id")
+        right = outputs.drop_duplicates("case_id", keep="last").set_index("case_id")
+        common = left.index.intersection(right.index)
+        return left.loc[common].reset_index(), right.loc[common].reset_index()
+    count = min(len(inputs), len(outputs))
+    return inputs.reset_index(drop=True).iloc[:count].copy(), outputs.reset_index(drop=True).iloc[:count].copy()
+
+
 def conditional_tail_analysis(inputs: pd.DataFrame, outputs: pd.DataFrame, metric: str, quantile: float = 0.99, upper: bool = True) -> pd.DataFrame:
     """Compare input distributions in an extreme output tail with all cases."""
-    if metric not in outputs:
+    inputs, outputs = _align_case_frames(inputs, outputs)
+    if metric not in outputs or outputs.empty:
         return pd.DataFrame()
     output_values = pd.to_numeric(outputs[metric], errors="coerce")
     threshold = output_values.quantile(quantile if upper else 1.0 - quantile)
@@ -214,7 +287,7 @@ def conditional_tail_analysis(inputs: pd.DataFrame, outputs: pd.DataFrame, metri
         if column in {"case_id", "seed"}:
             continue
         full = pd.to_numeric(numeric[column], errors="coerce")
-        tail = full[selected].dropna()
+        tail = full.loc[selected.to_numpy()].dropna()
         if tail.empty or full.dropna().empty:
             continue
         rows.append({"output": metric, "tail": "upper" if upper else "lower", "quantile": quantile, "threshold": float(threshold), "input": column, "full_mean": float(full.mean()), "tail_mean": float(tail.mean()), "mean_shift": float(tail.mean() - full.mean()), "tail_count": int(len(tail)), "sample_count": int(full.notna().sum())})
@@ -223,7 +296,8 @@ def conditional_tail_analysis(inputs: pd.DataFrame, outputs: pd.DataFrame, metri
 
 def spearman_sensitivity(inputs: pd.DataFrame, outputs: pd.DataFrame, output_columns: Sequence[str]) -> pd.DataFrame:
     """Return rank correlations as evidence of association, never causality."""
-    joined = pd.concat([inputs.reset_index(drop=True), outputs.reset_index(drop=True)], axis=1)
+    inputs, outputs = _align_case_frames(inputs, outputs)
+    joined = inputs.join(outputs.drop(columns=[column for column in ("case_id",) if column in outputs]), rsuffix="_output")
     numeric_inputs = [column for column in inputs.select_dtypes(include="number") if column not in {"case_id", "seed"}]
     rows: list[dict[str, Any]] = []
     for output in output_columns:
@@ -269,12 +343,16 @@ def compliance_analysis(frame: pd.DataFrame, requirements: Mapping[str, Mapping[
         worst_index = valid.idxmin() if len(valid) else None
         rows.append({
             "requirement": req_id, "metric": metric, "limit": limit, "operator": operator,
+            "description": requirement.get("description", req_id),
+            "source": requirement.get("source", "NOT AVAILABLE"),
+            "source_type": requirement.get("source_type", "UNKNOWN"),
             "nominal_margin": None, "p05_margin": float(np.percentile(valid, 5)) if len(valid) else np.nan,
             "p50_margin": float(np.percentile(valid, 50)) if len(valid) else np.nan,
             "p95_margin": float(np.percentile(valid, 95)) if len(valid) else np.nan,
             "probability_satisfied": successes / trials if trials else np.nan,
             "ci_lower": lower, "ci_upper": upper, "one_sided_lower_bound": one_sided,
-            "verification_status": "STATISTICALLY_DEMONSTRATED" if one_sided >= float(requirement.get("required_probability", 0.99)) else "NOT_STATISTICALLY_DEMONSTRATED",
+            "applicability": "AVAILABLE" if len(valid) else "NOT APPLICABLE",
+            "verification_status": "STATISTICALLY_DEMONSTRATED" if len(valid) and one_sided >= float(requirement.get("required_probability", 0.99)) else ("NOT APPLICABLE" if not len(valid) else "NOT_STATISTICALLY_DEMONSTRATED"),
             "worst_margin": float(valid.min()) if len(valid) else np.nan,
             "worst_case_id": frame.loc[worst_index, "case_id"] if worst_index is not None and "case_id" in frame else None,
         })

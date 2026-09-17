@@ -50,7 +50,7 @@ class UncertaintyRegistry:
                 units=v.get("units", ""),
                 distribution=v.get("distribution", "uniform"),
                 provenance=v.get("provenance", {}),
-                params={pk: pv for pk, pv in v.items() if pk not in ["enabled", "units", "distribution", "provenance", "nominal_yaml_path"]}
+                params={pk: pv for pk, pv in v.items() if pk not in ["enabled", "units", "distribution", "provenance"]}
             )
 
     def validate(self, strict: bool = True) -> list[str]:

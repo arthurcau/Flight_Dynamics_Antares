@@ -18,6 +18,7 @@ from antares_fd.simulation.monte_carlo_parameters import launch_angle_distributi
 from antares_fd.simulation.uncertainty import UncertaintyRegistry, SamplingPlan
 from antares_fd.simulation.uq_campaign import MonteCarloCampaign
 from antares_fd.simulation.uq_pipeline import finalize_campaign_analysis
+from antares_fd.simulation.scenarios import apply_scenario, SCENARIOS, NOMINAL
 
 from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
 
@@ -53,6 +54,10 @@ def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_ev
         while sim_monitor.keep_simulating():
             sim_idx = sim_monitor.increment() - 1
             case_seed = int(self._antares_case_seeds[sim_idx])
+            members = getattr(self, "_antares_environment_members", None)
+            member_indices = getattr(self, "_antares_environment_indices", None)
+            if members and member_indices:
+                self.environment.obj = members[int(member_indices[sim_idx]) % len(members)]
             self.environment._set_stochastic(case_seed)
             self.rocket._set_stochastic(case_seed)
             self.flight._set_stochastic(case_seed)
@@ -85,7 +90,10 @@ def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_ev
 def _failure_records(mc, samples, requested):
     """Represent every missing case explicitly in the canonical failure table."""
     successful = {
-        int(record.get("index", record.get("case_id")))
+        (int(record.get("index", record.get("case_id"))) - 1
+         if int(record.get("index", record.get("case_id"))) >= 1
+         and int(record.get("index", record.get("case_id"))) <= int(requested)
+         else int(record.get("index", record.get("case_id"))))
         for record in getattr(mc, "outputs_log", [])
         if isinstance(record, dict) and record.get("index", record.get("case_id")) is not None
     }
@@ -118,6 +126,12 @@ def execute_monte_carlo(config, project_dir):
     if not mc_cfg:
         raise ConfigurationError("Monte Carlo configuration (monte_carlo.yaml) is missing or empty.")
         
+    scenario_id = str(os.environ.get("ANTARES_MC_SCENARIO", NOMINAL)).lower()
+    if scenario_id not in SCENARIOS:
+        raise ConfigurationError(f"Unsupported stochastic scenario: {scenario_id}")
+    # Scenario overrides are applied before any builder runs.  This keeps the
+    # physical vehicle, motor and atmosphere builders shared across scenarios.
+    config = apply_scenario(config, scenario_id)
     num_sims = int(os.environ.get("ANTARES_MC_TARGET", mc_cfg.get("num_simulations", 10)))
     seed = mc_cfg.get("random_seed", 42)
     parallel = bool(mc_cfg.get("parallel", True))
@@ -181,9 +195,13 @@ def execute_monte_carlo(config, project_dir):
             profile=profile,
             campaign_id=run_id,
             config=campaign_settings,
+            scenario_id=scenario_id,
         )
         config_hashes = canonical_campaign.snapshot_config(project_dir)
         canonical_campaign.write_manifest("SAMPLING", extra={"configuration_hashes": config_hashes})
+        # The environment variable points at the campaign root so scenario
+        # paths are selected by the canonical campaign object.
+        results_dir = canonical_campaign.path
 
     # ---------------------------------------------------------------------------------
     # PHASE 1-3: DETERMINISTIC PRE-SAMPLING (No stochastic behavior defined inline)
@@ -199,13 +217,13 @@ def execute_monte_carlo(config, project_dir):
     nominal_env = build_environment(config.environment, config.launch)
     env_ensemble = build_environment_ensemble(config.environment, config.launch)
     
-    if registry_path.exists():
+    if canonical_campaign is not None:
+        samples_df = canonical_campaign.make_samples(registry_path, canonical_campaign.max_samples, len(env_ensemble))
+    elif registry_path.exists():
         registry = UncertaintyRegistry(registry_path)
         plan = SamplingPlan(registry, num_sims, seed, len(env_ensemble))
-        plan.export(results_dir / "scenarios.csv")
         samples_df = plan.samples
-        if canonical_campaign is not None:
-            samples_df = canonical_campaign.make_samples(registry_path, canonical_campaign.max_samples, len(env_ensemble))
+        plan.export(results_dir / "scenarios.csv")
     else:
         samples_df = None
         if canonical_campaign is not None:
@@ -223,21 +241,27 @@ def execute_monte_carlo(config, project_dir):
         wind_x_std = float(np.std(wx_list)) if wx_list else 1.0
         wind_y_std = float(np.std(wy_list)) if wy_list else 1.0
         print(f"[MAGI-Stochastic] Computed Ensemble variance: std_x={wind_x_std:.2f}, std_y={wind_y_std:.2f}")
+        magi_sampling_method = "MAGI_COMPLETE_PROFILE_PER_CASE"
+    else:
+        magi_sampling_method = "DETERMINISTIC_PROFILE"
 
     env_cfg = mc_cfg.get("environment") or {}
     user_wx_std = (env_cfg.get("wind_velocity_x") or {}).get("factor_std", 0.0)
     user_wy_std = (env_cfg.get("wind_velocity_y") or {}).get("factor_std", 0.0)
     
-    # If we have pre-generated samples, we inject them into the stochastics via tuples.
-    # Note: Phase 1 says "without changing behavior", Phase 2 says "mark provenance".
-    # RocketPy expects tuples. 
-    # For Phase 1 without completely breaking RocketPy parallel, we feed the StdDevs from the legacy format.
+    # Each case receives one complete MAGI profile.  The environment object is
+    # swapped immediately before RocketPy creates the case Flight; the shared
+    # stochastic wrapper still supplies the launch-site randomization.
+    wind_factor_x = user_wx_std if len(env_ensemble) <= 1 else 0.0
+    wind_factor_y = user_wy_std if len(env_ensemble) <= 1 else 0.0
     stoch_env = StochasticEnvironment(
         environment=nominal_env,
-        wind_velocity_x_factor=(1.0, (wind_x_std/3.0) if wind_x_std > 0 else user_wx_std),
-        wind_velocity_y_factor=(1.0, (wind_y_std/3.0) if wind_y_std > 0 else user_wy_std),
+        wind_velocity_x_factor=(1.0, wind_factor_x),
+        wind_velocity_y_factor=(1.0, wind_factor_y),
         elevation=(env_cfg.get("elevation") or {}).get("std", None)
     )
+    if canonical_campaign is not None:
+        canonical_campaign.settings["magi_sampling_method"] = magi_sampling_method
 
     motor = build_motor(config.motor, project_dir)
     mot_cfg = mc_cfg.get("motor") or {}
@@ -281,10 +305,9 @@ def execute_monte_carlo(config, project_dir):
     for rb_tuple in rocket.rail_buttons:
         stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=(rb_tuple.position[2], 0.0))
         
-    for parachute in rocket.parachutes:
-        if "main" in parachute.name.lower():
-            continue
-        stoch_rocket.add_parachute(StochasticParachute(parachute))\
+    if scenario_id != "ballistic":
+        for parachute in rocket.parachutes:
+            stoch_rocket.add_parachute(StochasticParachute(parachute))\
 
     rail_len = (config.launch.get("rail") or {}).get("length", 5.2)
     inc = (config.launch.get("rail") or {}).get("inclination_deg", 85.0)
@@ -314,6 +337,11 @@ def execute_monte_carlo(config, project_dir):
             'max_acceleration', 'max_acceleration_time',
         ],
     )
+    if canonical_campaign is not None and samples_df is not None and "atmosphere_ensemble" in samples_df:
+        ordered_samples = samples_df.sort_values("case_id")
+        member_indices = pd.to_numeric(ordered_samples["atmosphere_ensemble"], errors="coerce").fillna(0).astype(int).tolist()
+        mc._antares_environment_members = env_ensemble
+        mc._antares_environment_indices = member_indices
     
     manager = None
     all_flights = None
@@ -327,7 +355,9 @@ def execute_monte_carlo(config, project_dir):
     if canonical_campaign is not None and samples_df is not None and "seed" in samples_df:
         deterministic_seeds = samples_df.sort_values("case_id")["seed"].astype("uint64").tolist()
         mc._antares_case_seeds = deterministic_seeds
-        mc._antares_serial_case = already_done if "already_done" in locals() else 0
+        mc._antares_serial_case = 0
+
+    already_done = 0
 
     def _patched_run_single(*args, **kwargs):
         # Serial RocketPy execution does not expose a case seed hook. Set it
@@ -337,11 +367,25 @@ def execute_monte_carlo(config, project_dir):
             serial_index = min(mc._antares_serial_case, len(deterministic_seeds) - 1)
             case_seed = int(deterministic_seeds[serial_index])
             mc._antares_serial_case += 1
+            members = getattr(mc, "_antares_environment_members", None)
+            member_indices = getattr(mc, "_antares_environment_indices", None)
+            if members and member_indices:
+                mc.environment.obj = members[int(member_indices[serial_index]) % len(members)]
             mc.environment._set_stochastic(case_seed)
             mc.rocket._set_stochastic(case_seed)
             mc.flight._set_stochastic(case_seed)
-        # 1. Run nominal flight
+        # 1. Run the scenario flight.  Only the explicitly ballistic scenario
+        # uses a parachute-free continuation; required recovery scenarios use
+        # the same RocketPy integration path as nominal.
         flt_nom = _orig_run_single(*args, **kwargs)
+        if scenario_id != "ballistic":
+            try:
+                flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1], 'z': flt_nom.z[:, 1]}
+                if all_flights is not None:
+                    all_flights.append(flt_data)
+            except Exception:
+                pass
+            return flt_nom
         import copy
         import numpy as np
         from rocketpy import Flight
@@ -415,7 +459,6 @@ def execute_monte_carlo(config, project_dir):
         mc._MonteCarlo__sim_producer = types.MethodType(_deterministic_sim_producer, mc)
 
     outputs_file_path = results_dir / "mc_sim.outputs.txt"
-    already_done = 0
     canonical_outputs_path = (
         canonical_campaign.path / "outputs.parquet"
         if canonical_campaign is not None
@@ -447,6 +490,9 @@ def execute_monte_carlo(config, project_dir):
         mc.outputs_log = cached_outputs.to_dict("records")
         already_done = len(mc.outputs_log)
         mc.num_of_loaded_sims = already_done
+
+    if deterministic_seeds is not None:
+        mc._antares_serial_case = already_done
             
     batch_size = int(mc_cfg.get("batch_size", num_sims))
     if batch_size < 1:
@@ -530,6 +576,7 @@ def execute_monte_carlo(config, project_dir):
 
     summary = {
         "campaign_id": run_id,
+        "scenario_id": scenario_id,
         "status": campaign_status.upper(),
         "requested": num_sims,
         "completed": completed_cases,
@@ -556,11 +603,14 @@ def execute_monte_carlo(config, project_dir):
         },
         "monte_carlo": {
             "enabled": True,
+            "scenario_id": scenario_id,
             "seed": seed,
             "simulations": num_sims,
             "parallel": parallel,
             "workers": effective_workers,
-            "uncertainty_registry": str(registry_path.name) if registry_path.exists() else "none"
+            "uncertainty_registry": str(registry_path.name) if registry_path.exists() else "none",
+            "magi_sampling_method": magi_sampling_method,
+            "paired_realizations": bool(canonical_campaign is not None),
         },
         "storage": {
             "include_function_data": False,

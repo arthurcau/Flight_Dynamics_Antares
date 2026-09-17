@@ -17,6 +17,7 @@ from antares_fd.analysis.uq import (
 from antares_fd.simulation.uq_campaign import MonteCarloCampaign
 from antares_fd.simulation.uncertainty import SamplingPlan, UncertaintyRegistry
 from antares_fd.simulation.uq_storage import write_parquet_atomic
+from antares_fd.simulation.uq_pipeline import _uncertainty_frame
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,9 +61,19 @@ def test_campaign_batches_are_atomic_and_resume_by_case_id(tmp_path):
     assert not list(campaign.batches_path.glob("*.tmp"))
 
 
+def test_uncertainty_artifact_preserves_distribution_and_provenance():
+    frame = _uncertainty_frame(ROOT / "projects/neblina_1/config/uncertainties.yaml")
+    assert {"parameter", "distribution", "unit", "source_type", "correlation_group"}.issubset(frame.columns)
+    mass = frame.loc[frame["parameter"] == "vehicle_mass"].iloc[0]
+    assert mass["unit"] == "kg"
+    assert mass["distribution"] == "normal"
+    assert mass["source_type"] == "LEGACY_ASSUMPTION"
+    assert "mass_properties.mass_without_motor" in mass["nominal_yaml_path"]
+
+
 def test_tail_analysis_and_archive_preserve_integrity_metadata(tmp_path):
-    inputs = pd.DataFrame({"case_id": range(10), "wind": np.arange(10, dtype=float)})
-    outputs = pd.DataFrame({"case_id": range(10), "touchdown_velocity": np.arange(10, dtype=float)})
+    inputs = pd.DataFrame({"case_id": range(10), "wind": np.arange(10, dtype=float)}, index=np.arange(100, 110))
+    outputs = pd.DataFrame({"case_id": range(9, -1, -1), "touchdown_velocity": np.arange(9, -1, -1, dtype=float)}, index=np.arange(200, 210))
     tail = conditional_tail_analysis(inputs, outputs, "touchdown_velocity", quantile=0.8)
     assert tail.iloc[0]["tail_count"] == 2
     campaign = MonteCarloCampaign("demo", tmp_path, profile="debug")

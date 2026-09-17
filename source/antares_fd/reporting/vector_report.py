@@ -65,7 +65,7 @@ def _fmt(value: Any, digits: int = 2, unit: str = "") -> str:
 
 
 def _wrap(value: Any, width: int = 28) -> str:
-    return "\n".join(textwrap.wrap(str(value), width=width, break_long_words=False, break_on_hyphens=False))
+    return "\n".join(textwrap.wrap(str(value), width=width, break_long_words=True, break_on_hyphens=True))
 
 
 class VectorReportRenderer:
@@ -80,6 +80,14 @@ class VectorReportRenderer:
         self.figures_dir = self.output_path.parent / "figures"
         self.figures_dir.mkdir(parents=True, exist_ok=True)
         setup_matplotlib_theme()
+
+    def _branding_asset(self) -> Path | None:
+        docs = self.project_dir.parents[1] / "docs"
+        for name in ("Antares_Logo_black.pdf", "Antares_Logo_black.svg", "Antares_Logo_black.png"):
+            candidate = docs / name
+            if candidate.exists():
+                return candidate
+        return None
 
     def _page(self, title: str, section: str = ""):
         fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
@@ -119,8 +127,8 @@ class VectorReportRenderer:
 
     def _cover(self, pdf):
         fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
-        logo = self.project_dir.parents[1] / "docs" / "Antares_Logo_black.png"
-        if logo.exists():
+        logo = self._branding_asset()
+        if logo is not None and logo.suffix.lower() == ".png":
             ax = fig.add_axes((0.30, 0.72, 0.40, 0.16))
             ax.imshow(mpimg.imread(logo), aspect="equal")
             ax.axis("off")
@@ -151,9 +159,10 @@ class VectorReportRenderer:
                 ["Git branch", git.get("branch", "unknown")],
                 ["Dirty state", git.get("dirty", "unknown")],
                 ["Antares FD", "0.1.0"],
-                ["RocketPy", env.get("rocketpy_version", "unknown")],
-                ["Python", env.get("python_version", "unknown")],
-                ["Configuration hashes", "; ".join(f"{k}: {v}" for k, v in repro.get("config_hashes", {}).items()) or "NOT AVAILABLE"]]
+                 ["RocketPy", env.get("rocketpy_version", "unknown")],
+                 ["Python", env.get("python_version", "unknown")],
+                 ["Configuration hashes", "; ".join(f"{k}: {v}" for k, v in repro.get("config_hashes", {}).items()) or "NOT AVAILABLE"],
+                 ["Data hashes", "; ".join(f"{k}: {v}" for k, v in repro.get("data_hashes", {}).items()) or "NOT AVAILABLE"]]
         fig = self._page("Document Control")
         self._table(fig, rows, rect=(0.07, 0.25, 0.86, 0.58), fontsize=8, widths=[0.30, 0.70])
         self._text(fig, 0.07, 0.20, "This document was automatically generated from immutable analysis artifacts. Machine-specific absolute paths are intentionally excluded.", 9, color=MUTED)
@@ -166,7 +175,7 @@ class VectorReportRenderer:
         y = 0.76
         for item in items:
             fig.text(0.12, y, item, fontsize=11, color=INK)
-            fig.text(0.87, y, "·" * 20, fontsize=8, color="#CBD5E1", ha="right")
+            fig.text(0.87, y, "." * 20, fontsize=8, color="#CBD5E1", ha="right")
             y -= 0.038
         self._finish(pdf, fig)
 
@@ -192,13 +201,29 @@ class VectorReportRenderer:
     def _mc_summary(self):
         if not self.campaign_dir:
             return {}
-        return _read_json(self.campaign_dir / "summary.json", _read_json(self.campaign_dir / "monte_carlo_summary.json", {})) or {}
+        summary = _read_json(self.campaign_dir / "summary.json", _read_json(self.campaign_dir / "monte_carlo_summary.json", {})) or {}
+        if summary:
+            return summary
+        primary = self._scenario_dir("nominal")
+        return _read_json(primary / "summary.json", _read_json(primary / "monte_carlo_summary.json", {})) or {}
+
+    def _scenario_dir(self, scenario_id: str) -> Path:
+        if not self.campaign_dir:
+            return Path()
+        candidate = self.campaign_dir / "scenarios" / scenario_id
+        return candidate if candidate.exists() else self.campaign_dir
+
+    def _scenario_dirs(self) -> dict[str, Path]:
+        if not self.campaign_dir:
+            return {}
+        root = self.campaign_dir / "scenarios"
+        return {path.name: path for path in sorted(root.iterdir()) if path.is_dir()} if root.exists() else {}
 
     def _mc_value(self, metric: str, stat: str) -> str:
         if metric == "_count":
             s = self._mc_summary()
             return str(s.get("successful", s.get("completed", "NOT AVAILABLE")))
-        table = _read_table(self.campaign_dir / "statistics.parquet") if self.campaign_dir else pd.DataFrame()
+        table = _read_table(self._scenario_dir("nominal") / "statistics.parquet") if self.campaign_dir else pd.DataFrame()
         if table.empty or "metric" not in table:
             return "NOT AVAILABLE"
         row = table[table.metric == metric]
@@ -206,6 +231,8 @@ class VectorReportRenderer:
 
     def _mc_ellipse(self, key: str) -> str:
         landing = self._mc_summary().get("landing", {})
+        if not landing and self.campaign_dir:
+            landing = _read_json(self._scenario_dir("nominal") / "summary.json", {}).get("landing", {})
         ellipse = landing.get("ellipses", {}).get(key, {})
         return _fmt(ellipse.get("major_axis"), 0, "m") if ellipse else "NOT AVAILABLE"
 
@@ -225,7 +252,8 @@ class VectorReportRenderer:
         fig = self._page("2. Completeness & Engineering Warnings")
         rows = [["Status", "Evidence"]] + [["ENGINEERING WARNING", item] for item in warnings]
         self._table(fig, rows, rect=(0.07, 0.42, 0.86, 0.40), fontsize=8, widths=[0.28, 0.72])
-        completeness = [["Subsystem", "State"], ["Nominal", "COMPLETE"], ["Propulsion", "COMPLETE"], ["Aerodynamics", "COMPLETE / WINDOWED"], ["MAGI", "COMPLETE"], ["Recovery", "COMPLETE / SHOCK LIMITED"], ["Monte Carlo", "COMPLETE_NOT_CONVERGED" if self.campaign_dir else "NOT AVAILABLE"], ["Validation", "AVAILABLE" if getattr(self.metrics, "validation", None) else "NOT AVAILABLE"]]
+        campaign_status = self._mc_summary().get("status", "NOT AVAILABLE") if self.campaign_dir else "NOT AVAILABLE"
+        completeness = [["Subsystem", "State"], ["Nominal", "COMPLETE"], ["Propulsion", "COMPLETE"], ["Aerodynamics", "COMPLETE / WINDOWED"], ["MAGI", "COMPLETE"], ["Recovery", "COMPLETE / SHOCK LIMITED"], ["Monte Carlo", campaign_status], ["Validation", "AVAILABLE" if getattr(self.metrics, "validation", None) else "NOT AVAILABLE"]]
         self._table(fig, completeness, rect=(0.07, 0.10, 0.86, 0.25), fontsize=8, widths=[0.45, 0.55])
         self._finish(pdf, fig)
 
@@ -244,22 +272,32 @@ class VectorReportRenderer:
     def _compliance_rows(self):
         if not self.campaign_dir:
             return []
-        frame = _read_table(self.campaign_dir / "compliance.parquet")
+        frame = _read_table(self._scenario_dir("nominal") / "compliance.parquet")
         return frame.to_dict("records") if not frame.empty else []
 
     def _provenance(self, pdf):
         repro = collect_reproducibility_data(self.project_dir)
         rows = [["Parameter", "Source", "Classification", "Confidence / semantics"]]
         for item in repro.get("input_quality", []):
-            rows.append([item.get("parameter"), item.get("source"), item.get("classification"), item.get("confidence")])
-        rows.extend([["Dry mass", "vehicle.yaml mass_properties.mass_without_motor", "MEASURED / CONFIGURED", "Instrument resolution is not uncertainty"], ["Aerodynamics", "aero/*.csv", "MODELED", "Applicability bounded by configured window"], ["Atmosphere", "MAGI adapter", "NATIVE MODEL", "Forecast member provenance required"]])
+            semantics = item.get("uncertainty_semantics", "NOT PROVIDED")
+            confidence = item.get("confidence", "UNKNOWN")
+            rows.append([item.get("parameter"), item.get("source"), item.get("classification"), f"{confidence}; {semantics}"])
+        if len(rows) == 1:
+            rows.append(["NOT AVAILABLE"] * 4)
         fig = self._page("4. Model Provenance & Input Quality")
         self._table(fig, rows, rect=(0.06, 0.18, 0.88, 0.65), fontsize=6.9, widths=[0.24, 0.29, 0.22, 0.25])
         self._finish(pdf, fig)
 
     def _validity(self, pdf):
         m = self.metrics
-        rows = [["Domain", "Observed", "Applicability / status"], ["Aerodynamics / Mach", _fmt(getattr(m, "max_mach", None), 3), "Configured aerodynamic coefficient domain"], ["Aerodynamics / AoA", _fmt(getattr(m, "max_angle_of_attack", None), 1, "deg"), f"Window: {getattr(m, 'aero_analysis_window', {})}"], ["MAGI altitude", _fmt(getattr(m, "apogee_asl", None), 0, "m ASL"), "Profile evaluated to trajectory ceiling"], ["Recovery shock", "Numerical transient", "Structural opening shock not resolved"]]
+        window = getattr(m, "aero_analysis_window", {}) or {}
+        window_text = (
+            f"start={window.get('start', 'NOT AVAILABLE')}; "
+            f"end={window.get('end', 'NOT AVAILABLE')}; "
+            f"min Q={_fmt(window.get('minimum_dynamic_pressure_pa'), 0, 'Pa')}; "
+            f"min speed={_fmt(window.get('minimum_speed_mps'), 1, 'm/s')}"
+        )
+        rows = [["Domain", "Observed", "Applicability / status"], ["Aerodynamics / Mach", _fmt(getattr(m, "max_mach", None), 3), "Configured aerodynamic coefficient domain"], ["Aerodynamics / AoA", _fmt(getattr(m, "max_angle_of_attack", None), 1, "deg"), window_text], ["MAGI altitude", _fmt(getattr(m, "apogee_asl", None), 0, "m ASL"), "Profile evaluated to trajectory ceiling"], ["Recovery shock", "Numerical transient", "Structural opening shock not resolved"]]
         fig = self._page("5. Model Validity & Data Coverage")
         self._table(fig, rows, rect=(0.07, 0.45, 0.86, 0.37), fontsize=8, widths=[0.25, 0.25, 0.50])
         self._text(fig, 0.07, 0.35, "The raw ascent AoA maximum is intentionally separated from the aerodynamic-analysis maximum. The latter is evaluated only between rail exit and apogee while dynamic pressure and airspeed exceed configured numerical validity floors.", 9)
@@ -269,25 +307,45 @@ class VectorReportRenderer:
         ts = getattr(self.metrics, "timeseries", None)
         if ts is None:
             return
-        fig = self._page("6. Flight Kinematics", "Canonical FlightMetrics time series")
-        ax1 = fig.add_axes((0.10, 0.55, 0.80, 0.28)); ax1.plot(ts.time, ts.altitude_agl, color=NAVY, lw=1.2); ax1.set(xlabel="Time (s)", ylabel="Altitude AGL (m)"); ax1.grid(True, alpha=.3)
-        ax2 = fig.add_axes((0.10, 0.16, 0.80, 0.28)); ax2.plot(ts.time, ts.speed, color=BLUE, label="speed"); ax2.plot(ts.time, ts.mach * 100, color=ORANGE, ls="--", label="Mach × 100"); ax2.set(xlabel="Time (s)", ylabel="Speed / scaled Mach"); ax2.legend(fontsize=7); ax2.grid(True, alpha=.3)
+        events = getattr(self.metrics, "events", None)
+        event_items = [("Rail exit", getattr(events, "rail_exit", None), BLUE), ("Max-Q", getattr(events, "max_q", None), ORANGE), ("Burnout", getattr(events, "burnout", None), TEAL), ("Apogee", getattr(events, "apogee", None), RED)]
+        fig = self._page("6. Flight Kinematics", "Altitude, velocity and Mach use independent engineering axes")
+        axes = [fig.add_axes((.10, .55, .36, .27)), fig.add_axes((.55, .55, .36, .27)), fig.add_axes((.10, .16, .36, .27)), fig.add_axes((.55, .16, .36, .27))]
+        series = [(ts.altitude_agl, "Altitude AGL (m)", NAVY), (ts.velocity_z, "Vertical velocity (m/s)", TEAL), (ts.speed, "Total velocity (m/s)", BLUE), (ts.mach, "Mach", ORANGE)]
+        for axis, (values, ylabel, color) in zip(axes, series):
+            axis.plot(ts.time, values, color=color, lw=1.0)
+            axis.set(xlabel="Time (s)", ylabel=ylabel)
+            axis.grid(True, alpha=.3)
+            for label, event, marker_color in event_items:
+                if event is not None:
+                    axis.axvline(event.time, color=marker_color, lw=.55, alpha=.45)
+        self._finish(pdf, fig)
+        fig = self._page("6A. Flight Kinematics", "Acceleration, ground displacement and vertical trajectory")
+        axes = [fig.add_axes((.10, .55, .36, .27)), fig.add_axes((.55, .55, .36, .27)), fig.add_axes((.10, .16, .36, .27)), fig.add_axes((.55, .16, .36, .27))]
+        axes[0].plot(ts.time, ts.acceleration, color=RED, lw=1.0); axes[0].set(xlabel="Time (s)", ylabel="Total acceleration (g)")
+        axes[1].plot(ts.time, ts.acceleration_z, color=ORANGE, lw=1.0); axes[1].set(xlabel="Time (s)", ylabel="Vertical acceleration (m/s^2)")
+        axes[2].plot(ts.x, ts.y, color=BLUE, lw=1.0); axes[2].scatter([0], [0], color="black", marker="+", s=30); axes[2].set(xlabel="East (m)", ylabel="North (m)"); axes[2].axis("equal")
+        axes[3].plot(np.hypot(ts.x, ts.y), ts.altitude_agl, color=TEAL, lw=1.0); axes[3].set(xlabel="Horizontal displacement (m)", ylabel="Altitude AGL (m)")
+        for axis in axes:
+            axis.grid(True, alpha=.3)
         self._finish(pdf, fig)
         fig = self._page("7. Propulsion", "Mass, thrust, impulse and T/W definitions")
-        ax = fig.add_axes((0.10, 0.55, 0.80, 0.28)); ax.plot(ts.time, ts.thrust, color=ORANGE, label="Thrust (N)"); ax2 = ax.twinx(); ax2.plot(ts.time, ts.thrust / np.maximum(ts.mass, 1e-9) / 9.80665, color=BLUE, ls="--", label="T/W"); ax.set(xlabel="Time (s)", ylabel="Thrust (N)"); ax2.set_ylabel("T/W"); ax.grid(True, alpha=.3)
+        propulsion_mask = ts.time <= float(getattr(self.metrics, "burnout_time", ts.time[-1])) + 5.0
+        ax = fig.add_axes((0.10, 0.55, 0.80, 0.28)); ax.plot(ts.time[propulsion_mask], ts.thrust[propulsion_mask], color=ORANGE, label="Thrust (N)"); ax2 = ax.twinx(); ax2.plot(ts.time[propulsion_mask], ts.thrust[propulsion_mask] / np.maximum(ts.mass[propulsion_mask], 1e-9) / 9.80665, color=BLUE, ls="--", label="T/W"); ax.set(xlabel="Time from ignition (s)", ylabel="Thrust (N)"); ax2.set_ylabel("T/W"); ax.grid(True, alpha=.3)
         rows = [["KPI", "Value"], ["T/W at t = 0", _fmt(getattr(self.metrics, "initial_tw", None), 2)], ["T/W at ignition", _fmt(getattr(self.metrics, "ignition_tw", None), 2)], ["T/W at rail exit", _fmt(getattr(self.metrics, "rail_exit_tw", None), 2)], ["Maximum T/W", _fmt(getattr(self.metrics, "peak_tw", None), 2)], ["Average burn T/W", _fmt(getattr(self.metrics, "average_burn_tw", None), 2)], ["Total impulse", _fmt(getattr(self.metrics, "total_impulse", None), 0, "N s")]]
         self._table(fig, rows, rect=(0.10, 0.16, 0.80, 0.25), fontsize=8, widths=[0.55, 0.45]); self._finish(pdf, fig)
         fig = self._page("8. Max-Q & Aerodynamic Loads", "Q-alpha is an aerodynamic bending-load indicator")
         ax = fig.add_axes((0.10, 0.53, 0.80, 0.30)); ax.plot(ts.time, ts.dynamic_pressure / 1000, color=BLUE, label="Q (kPa)"); ax.axvline(getattr(self.metrics, "max_q_time", 0), color=RED, ls="--", label="Max-Q"); ax.set(xlabel="Time (s)", ylabel="Dynamic pressure (kPa)"); ax.legend(fontsize=7); ax.grid(True, alpha=.3)
         rows = [["Max-Q engineering state", "Value"], ["Time", _fmt(getattr(self.metrics, "max_q_time", None), 2, "s")], ["Altitude AGL", _fmt(getattr(self.metrics, "max_q_altitude", None), 1, "m")], ["Mach", _fmt(getattr(self.metrics, "max_q_mach", None), 3)], ["AoA", _fmt(getattr(self.metrics, "angle_of_attack_at_max_q", None), 2, "deg")], ["Static margin", _fmt(getattr(self.metrics, "static_margin_max_q", None), 2, "cal")], ["Peak valid Q-alpha", _fmt(getattr(self.metrics, "peak_valid_q_alpha", None) / 1000 if getattr(self.metrics, "peak_valid_q_alpha", None) is not None else None, 1, "kPa deg")]]
         self._table(fig, rows, rect=(0.10, 0.14, 0.80, 0.29), fontsize=8, widths=[0.55, 0.45]); self._finish(pdf, fig)
-        fig = self._page("9. Stability", "CG, CP and static margin")
-        ax = fig.add_axes((0.10, 0.51, 0.80, 0.32)); ax.plot(ts.time, ts.cg, label="CG", color=BLUE); ax.plot(ts.time, ts.cp, label="CP", color=RED); ax.set(xlabel="Time (s)", ylabel="Position from nose (m)"); ax.legend(fontsize=7); ax.grid(True, alpha=.3)
-        ax2 = fig.add_axes((0.10, 0.14, 0.80, 0.25)); ax2.plot(ts.time, ts.static_margin, color=TEAL); ax2.axhline(1.0, color=RED, ls="--", label="1 cal reference"); ax2.set(xlabel="Time (s)", ylabel="Static margin (cal)"); ax2.legend(fontsize=7); ax2.grid(True, alpha=.3); self._finish(pdf, fig)
+        stability_mask = ts.time <= float(getattr(self.metrics, "apogee_time", ts.time[-1]))
+        fig = self._page("9. Stability", "CG, CP and static margin through the aerodynamic flight window")
+        ax = fig.add_axes((0.10, 0.51, 0.80, 0.32)); ax.plot(ts.time[stability_mask], ts.cg[stability_mask], label="CG", color=BLUE); ax.plot(ts.time[stability_mask], ts.cp[stability_mask], label="CP", color=RED); ax.set(xlabel="Time (s)", ylabel="Position from nose (m)"); ax.legend(fontsize=7); ax.grid(True, alpha=.3)
+        ax2 = fig.add_axes((0.10, 0.14, 0.80, 0.25)); ax2.plot(ts.time[stability_mask], ts.static_margin[stability_mask], color=TEAL); ax2.axhline(1.0, color=RED, ls="--", label="1 cal reference"); ax2.set(xlabel="Time (s)", ylabel="Static margin (cal)"); ax2.legend(fontsize=7); ax2.grid(True, alpha=.3); self._finish(pdf, fig)
         fig = self._page("10. MAGI Atmospheric Environment")
         ax = fig.add_axes((0.11, 0.52, 0.78, 0.33)); ax.plot(self.metrics.atmosphere.wind_speed, self.metrics.atmosphere.altitude_agl, color=BLUE, label="Wind magnitude"); ax.set(xlabel="Wind speed (m/s)", ylabel="Altitude AGL (m)"); ax.grid(True, alpha=.3)
         ax2 = fig.add_axes((0.11, 0.13, 0.36, 0.27)); ax2.plot(self.metrics.atmosphere.wind_u, self.metrics.atmosphere.wind_v, color=NAVY); ax2.set(xlabel="East U (m/s)", ylabel="North V (m/s)"); ax2.grid(True, alpha=.3)
-        ax3 = fig.add_axes((0.57, 0.13, 0.32, 0.27)); ax3.plot(self.metrics.atmosphere.density, self.metrics.atmosphere.altitude_agl, color=TEAL, label="density"); ax3.set(xlabel="Density (kg/m³)", ylabel="Altitude (m)"); ax3.grid(True, alpha=.3); self._finish(pdf, fig)
+        ax3 = fig.add_axes((0.57, 0.13, 0.32, 0.27)); ax3.plot(self.metrics.atmosphere.density, self.metrics.atmosphere.altitude_agl, color=TEAL, label="density"); ax3.set(xlabel="Density (kg/m^3)", ylabel="Altitude (m)"); ax3.grid(True, alpha=.3); self._finish(pdf, fig)
         fig = self._page("11. Recovery", "Signed vertical velocity is distinct from positive touchdown speed")
         ax = fig.add_axes((0.10, 0.53, 0.80, 0.30)); mask = ts.time >= getattr(self.metrics, "apogee_time", 0); ax.plot(ts.time[mask], ts.altitude_agl[mask], color=TEAL); ax.set(xlabel="Time (s)", ylabel="Altitude AGL (m)"); ax.grid(True, alpha=.3)
         rows = [["Event / KPI", "Value"], ["Drogue trigger", _fmt(getattr(self.metrics, "drogue_deployment_time", None), 2, "s")], ["Main trigger", _fmt(getattr(self.metrics, "main_deployment_time", None), 2, "s")], ["Touchdown speed |Vz|", _fmt(getattr(self.metrics, "touchdown_velocity", None), 1, "m/s")], ["Touchdown energy", _fmt(getattr(self.metrics, "touchdown_energy", None), 0, "J")], ["Opening shock", "NOT PHYSICALLY RESOLVED BY CURRENT MODEL"]]
@@ -304,6 +362,10 @@ class VectorReportRenderer:
 
     def _mc_pages(self, pdf):
         if not self.campaign_dir:
+            return
+        scenario_dirs = self._scenario_dirs()
+        if scenario_dirs:
+            self._scenario_stochastic_pages(pdf, scenario_dirs)
             return
         summary = self._mc_summary(); performance = _read_json(self.campaign_dir / "performance.json", {}) or {}
         rows = [["Campaign field", "Value"], ["Campaign ID", summary.get("campaign_id", self.run_id)], ["Status", summary.get("status", "NOT AVAILABLE")], ["Requested", summary.get("requested", "NOT AVAILABLE")], ["Successful", summary.get("successful", summary.get("completed", "NOT AVAILABLE"))], ["Failed", summary.get("failed", "NOT AVAILABLE")], ["Master seed", summary.get("master_seed", "recorded in manifest")], ["Cases/s", performance.get("cases_per_second", "NOT AVAILABLE")], ["Wall time", performance.get("elapsed_seconds", "NOT AVAILABLE")], ["Disk bytes", performance.get("campaign_disk_bytes", "NOT AVAILABLE")]]
@@ -327,6 +389,106 @@ class VectorReportRenderer:
         if not sens.empty and {"input", "output", "coefficient"}.issubset(sens.columns):
             top = sens.assign(abs_coeff=sens.coefficient.abs()).sort_values("abs_coeff").tail(8); ax = fig.add_axes((.10, .12, .80, .23)); ax.barh(top.input.astype(str), top.coefficient, color=TEAL); ax.set_xlabel("Spearman rho (association)"); ax.grid(True, axis="x", alpha=.3)
         self._finish(pdf, fig)
+
+    def _scenario_stochastic_pages(self, pdf, scenario_dirs: dict[str, Path]):
+        """Render multi-scenario stochastic evidence from saved tables only."""
+        summaries = {sid: _read_json(path / "summary.json", {}) or {} for sid, path in scenario_dirs.items()}
+        stats = {sid: _read_table(path / "statistics.parquet") for sid, path in scenario_dirs.items()}
+        rows = [["Scenario", "Requested", "Successful", "Failed", "Failure rate", "Status", "Pairing"]]
+        pairing = _read_json(self.campaign_dir / "paired_comparison" / "summary.json", {}) or {}
+        pairing_status = pairing.get("status", "NOT AVAILABLE")
+        for sid in scenario_dirs:
+            item = summaries[sid]
+            total = max(int(item.get("successful", 0)) + int(item.get("failed", 0)), 1)
+            rows.append([sid, item.get("requested", "NOT AVAILABLE"), item.get("successful", 0), item.get("failed", 0), f"{100 * int(item.get('failed', 0)) / total:.2f}%", item.get("status", "NOT AVAILABLE"), pairing_status])
+        fig = self._page("13. Stochastic Scenario Campaign", "One immutable sample population; independent artifacts and status per scenario")
+        self._table(fig, rows, rect=(0.05, 0.55, 0.90, 0.28), fontsize=7, widths=[.18, .14, .14, .12, .14, .16, .22])
+        self._text(fig, .07, .48, "Scenario comparison is directly paired only when the same case IDs and shared sampled inputs are present in every scenario. Failed cases remain visible in the denominator and are excluded from scalar statistics.", 9)
+        self._finish(pdf, fig)
+
+        uncertainty = _read_table(self.campaign_dir / "uncertainty_inputs.parquet")
+        if not uncertainty.empty:
+            rows = [["Parameter", "Unit", "Distribution", "Parameters", "Source / type", "Correlation", "Status"]]
+            for _, item in uncertainty.iterrows():
+                source = f"{item.get('source', 'NOT PROVIDED')} / {item.get('source_type', 'UNKNOWN')}"
+                status = "CONFIGURED" if str(item.get("source_type", "UNKNOWN")).upper() not in {"UNKNOWN", "NONE", "NAN"} else "UNKNOWN PROVENANCE"
+                rows.append([item.get("parameter"), item.get("unit"), item.get("distribution"), item.get("parameters"), source, item.get("correlation_group"), status])
+            fig = self._page("13A. Stochastic Input Registry", "The same immutable sample table feeds every configured scenario")
+            self._table(fig, rows, rect=(.03, .18, .94, .68), fontsize=5.8, widths=[.15, .09, .12, .24, .18, .12, .10])
+            self._text(fig, .04, .12, "Parameters and provenance are read from uncertainties.yaml. Missing source metadata is shown as UNKNOWN; no instrument resolution is converted into uncertainty.", 8.5, color=MUTED)
+            self._finish(pdf, fig)
+
+        fig = self._page("14. Scenario Output Distributions", "Empirical distributions from scenario outputs.parquet")
+        axes = [fig.add_axes((.10, .56, .36, .25)), fig.add_axes((.55, .56, .36, .25)), fig.add_axes((.10, .17, .36, .25)), fig.add_axes((.55, .17, .36, .25))]
+        for sid, path in scenario_dirs.items():
+            output = _read_table(path / "outputs.parquet")
+            for axis, metric, label in zip(axes, ("apogee_agl", "max_mach", "landing_distance", "touchdown_velocity"), ("Apogee AGL (m)", "Max Mach", "Landing distance (m)", "Touchdown speed (m/s)")):
+                if metric in output:
+                    values = pd.to_numeric(output[metric], errors="coerce").dropna()
+                    if len(values):
+                        axis.hist(values, bins=25, histtype="step", linewidth=1.1, density=True, label=sid)
+                axis.set_xlabel(label); axis.set_ylabel("Empirical density"); axis.grid(True, alpha=.25)
+        for axis in axes:
+            axis.legend(fontsize=6)
+        self._finish(pdf, fig)
+
+        fig = self._page("15. Scenario Landing Dispersion", "Raw samples and 95% covariance boundaries; empirical cloud remains visible")
+        axis = fig.add_axes((.11, .18, .78, .65))
+        colors = [BLUE, ORANGE, TEAL, RED]
+        for color, (sid, path) in zip(colors, scenario_dirs.items()):
+            output = _read_table(path / "outputs.parquet")
+            if not {"landing_east", "landing_north"}.issubset(output.columns):
+                continue
+            x = pd.to_numeric(output["landing_east"], errors="coerce"); y = pd.to_numeric(output["landing_north"], errors="coerce")
+            valid = x.notna() & y.notna()
+            axis.scatter(x[valid], y[valid], s=7, alpha=.22, color=color, label=sid)
+            if valid.any():
+                axis.scatter([x[valid].mean()], [y[valid].mean()], color=color, marker="x", s=35)
+        axis.scatter([0], [0], color="black", marker="+", s=55, label="Launch point")
+        axis.set_xlabel("East (m)"); axis.set_ylabel("North (m)"); axis.axis("equal"); axis.grid(True, alpha=.25); axis.legend(fontsize=7)
+        self._finish(pdf, fig)
+
+        fig = self._page("16. Scenario Convergence", "Convergence is evaluated independently for every scenario")
+        rows = [["Metric", *scenario_dirs.keys()]]
+        metric_names = ("apogee_p50", "apogee_p95", "landing_radius_p95", "landing_ellipse_95_major", "touchdown_velocity_p95", "touchdown_energy_p95")
+        for metric in metric_names:
+            row = [metric]
+            for sid, path in scenario_dirs.items():
+                convergence = _read_table(path / "convergence.parquet")
+                selected = convergence[convergence.get("metric", pd.Series(dtype=str)) == metric] if not convergence.empty else pd.DataFrame()
+                row.append(selected.iloc[-1].get("status", "NOT AVAILABLE") if not selected.empty else "NOT AVAILABLE")
+            rows.append(row)
+        self._table(fig, rows, rect=(.08, .45, .84, .32), fontsize=7.2, widths=[.35] + [.65 / max(len(scenario_dirs), 1)] * len(scenario_dirs))
+        self._text(fig, .08, .37, "No scenario inherits nominal convergence. The status shown is the status of the last available checkpoint in that scenario's convergence artifact.", 9)
+        self._finish(pdf, fig)
+
+        fig = self._page("17. Scenario Requirement Probability", "Observed compliance, exact confidence bounds and applicability")
+        req_ids = sorted({req for path in scenario_dirs.values() for req in _read_table(path / "compliance.parquet").get("requirement", pd.Series(dtype=str)).dropna().astype(str)})
+        rows = [["Requirement", *scenario_dirs.keys()]]
+        for req_id in req_ids:
+            row = [req_id]
+            for sid, path in scenario_dirs.items():
+                compliance = _read_table(path / "compliance.parquet")
+                selected = compliance[compliance["requirement"].astype(str) == req_id] if "requirement" in compliance else pd.DataFrame()
+                if selected.empty:
+                    row.append("NOT AVAILABLE")
+                else:
+                    item = selected.iloc[0]
+                    row.append(f"{_fmt(item.get('probability_satisfied'), 3)}; LB95={_fmt(item.get('one_sided_lower_bound'), 3)}")
+            rows.append(row)
+        if len(rows) == 1:
+            rows.append(["REQUIREMENTS DATABASE NOT AVAILABLE", *(["NOT AVAILABLE"] * len(scenario_dirs))])
+        self._table(fig, rows, rect=(.04, .18, .92, .65), fontsize=6.2, widths=[.24] + [.76 / max(len(scenario_dirs), 1)] * len(scenario_dirs))
+        self._finish(pdf, fig)
+
+        paired_stats = _read_table(self.campaign_dir / "paired_comparison" / "comparison_statistics.parquet")
+        if not paired_stats.empty:
+            rows = [["Paired delta", "Mean", "P05", "P50", "P95", "P99"]]
+            for _, item in paired_stats.iterrows():
+                rows.append([item.get("metric", ""), _fmt(item.get("mean")), _fmt(item.get("p05")), _fmt(item.get("p50")), _fmt(item.get("p95")), _fmt(item.get("p99"))])
+            fig = self._page("18. Paired Failure-Mode Comparison", "Deltas use common random numbers and are conditional on shared valid case IDs")
+            self._table(fig, rows, rect=(.05, .16, .90, .68), fontsize=6.5, widths=[.36, .13, .13, .13, .13, .12])
+            self._finish(pdf, fig)
 
     def _validation(self, pdf):
         fig = self._page("16. Flight Validation")
@@ -354,5 +516,20 @@ class VectorReportRenderer:
         metadata = {"Title": "Antares Flight Dynamics Engineering Evidence Package", "Author": "Antares Flight Dynamics", "Subject": self.run_id}
         with PdfPages(self.output_path, metadata=metadata) as pdf:
             self._cover(pdf); self._document_control(pdf); self._toc(pdf); self._executive(pdf); self._warnings(pdf); self._requirements(pdf); self._provenance(pdf); self._validity(pdf); self._flight_pages(pdf); self._scenarios(pdf); self._mc_pages(pdf); self._validation(pdf); self._appendices(pdf)
-        (self.output_path.parent / "report_manifest.json").write_text(json.dumps({"page_count": self.pages, "headings": list(__import__("antares_fd.reporting.qa", fromlist=["EXPECTED_HEADINGS"]).EXPECTED_HEADINGS), "renderer": "matplotlib.backends.backend_pdf.PdfPages", "physics_rerun": False}, indent=2), encoding="utf-8")
+        from antares_fd.reporting.qa import EXPECTED_HEADINGS, inspect_report
+        manifest_path = self.output_path.parent / "report_manifest.json"
+        branding = self._branding_asset()
+        branding_name = "NOT AVAILABLE"
+        if branding is not None:
+            try:
+                branding_name = branding.resolve().relative_to(self.project_dir.parents[1].resolve()).as_posix()
+            except ValueError:
+                branding_name = branding.name
+        manifest_path.write_text(json.dumps({"page_count": self.pages, "headings": list(EXPECTED_HEADINGS), "renderer": "matplotlib.backends.backend_pdf.PdfPages", "physics_rerun": False, "branding_asset": branding_name}, indent=2), encoding="utf-8")
+        qa = inspect_report(self.output_path, self.campaign_dir if self.campaign_dir else None, self.output_path.parent / "build" / "qa_pages")
+        manifest = _read_json(manifest_path, {}) or {}
+        manifest["qa"] = qa
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        if not qa.get("passed", False):
+            print(f"[Report QA] Review required: {qa}")
         return self.output_path

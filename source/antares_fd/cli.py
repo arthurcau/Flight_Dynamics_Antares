@@ -9,7 +9,8 @@ import os
 from pathlib import Path
 
 from antares_fd.config import load_project_config
-from antares_fd.simulation.uq_campaign import MonteCarloCampaign, PROFILES
+from antares_fd.simulation.uq_campaign import MonteCarloCampaign, StochasticScenarioCampaign, PROFILES
+from antares_fd.simulation.scenarios import REQUIRED_SCENARIOS, scenario_ids as configured_scenario_ids
 
 
 def _project(root: Path, name: str) -> Path:
@@ -67,14 +68,15 @@ def main(argv: list[str] | None = None) -> int:
     config = load_project_config(project_dir)
     mc_cfg = config.monte_carlo or {}
     seed = int(mc_cfg.get("random_seed", 42))
+    scenarios = tuple(configured_scenario_ids(config)) if args.all_scenarios else ("nominal",)
     if args.resume:
-        campaign = MonteCarloCampaign(project_dir.name, root, seed, args.profile, args.resume)
-        manifest_path = campaign.path / "manifest.json"
+        manifest_path = root / "results" / project_dir.name / args.resume / "manifest.json"
         if not manifest_path.exists():
             raise SystemExit(f"Campaign manifest not found: {manifest_path}")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         seed = int(manifest.get("master_seed", seed))
         profile = manifest.get("profile", args.profile)
+        scenarios = tuple(manifest.get("scenario_ids", scenarios)) if args.all_scenarios else ("nominal",)
         # Rehydrate the campaign limits from the immutable manifest. The
         # sample table can intentionally be larger than the initial target
         # (official campaigns reserve up to 20k rows), so sample_table_rows
@@ -82,33 +84,61 @@ def main(argv: list[str] | None = None) -> int:
         requested = int(manifest.get("requested_samples", manifest.get("sample_table_rows", 0)))
         if requested < 1:
             raise SystemExit(f"Campaign manifest has no valid requested sample count: {manifest_path}")
-        campaign = MonteCarloCampaign(
-            project_dir.name,
-            root,
-            seed,
-            profile,
-            args.resume,
+        campaign = StochasticScenarioCampaign(
+            project_dir.name, root, seed, profile, args.resume,
             config={
                 "target_samples": requested,
                 "min_samples": int(manifest.get("min_samples", requested)),
                 "max_samples": int(manifest.get("max_samples", requested)),
             },
+            scenario_ids=scenarios,
         )
         target = requested
     else:
         target = int(PROFILES[args.profile].get("target_samples", mc_cfg.get("num_simulations", 10)))
-        campaign = MonteCarloCampaign(project_dir.name, root, seed, args.profile, config={"target_samples": target, "min_samples": target, "max_samples": target})
+        campaign = StochasticScenarioCampaign(
+            project_dir.name, root, seed, args.profile,
+            config={"target_samples": target, "min_samples": target, "max_samples": int(PROFILES[args.profile].get("max_samples", target))},
+            scenario_ids=scenarios,
+        )
+
+    # Sampling is a campaign operation.  It runs once and is reused by every
+    # scenario, so paired deltas compare the same physical realization.
+    registry_path = project_dir / "config" / "uncertainties.yaml"
+    configuration_hashes = campaign.snapshot_config(project_dir)
+    samples = campaign.ensure_samples(registry_path if registry_path.exists() else None)
+    campaign.write_manifest(
+        "SAMPLING",
+        profile=campaign.profile,
+        requested_samples=campaign.target_samples,
+        min_samples=campaign.min_samples,
+        max_samples=campaign.max_samples,
+        sample_table_rows=int(len(samples)),
+        configuration_hashes=configuration_hashes,
+    )
 
     previous = {key: os.environ.get(key) for key in ("ANTARES_CAMPAIGN_DIR", "ANTARES_CAMPAIGN_ACTIVE", "ANTARES_CAMPAIGN_RUN_ID", "ANTARES_MC_TARGET", "ANTARES_MC_PROFILE", "ANTARES_MC_WORKERS", "ANTARES_MC_MAX")}
     os.environ.update({"ANTARES_CAMPAIGN_DIR": str(campaign.path), "ANTARES_CAMPAIGN_ACTIVE": "1", "ANTARES_CAMPAIGN_RUN_ID": campaign.campaign_id, "ANTARES_MC_TARGET": str(target), "ANTARES_MC_PROFILE": campaign.profile})
     if args.workers is not None:
         os.environ["ANTARES_MC_WORKERS"] = str(args.workers)
     os.environ["ANTARES_MC_MAX"] = str(campaign.max_samples if campaign.profile == "official" else target)
-    scenarios = ["nominal", "main_at_apogee", "only_reefing"] if args.all_scenarios else ["nominal"]
     try:
         for scenario_id in scenarios:
             os.environ["ANTARES_MC_SCENARIO"] = scenario_id
             _run_script(project_dir)
+        if args.all_scenarios:
+            pairing = campaign.finalize_paired_comparison()
+            campaign.write_manifest(
+                "COMPLETE",
+                profile=campaign.profile,
+                requested_samples=campaign.target_samples,
+                min_samples=campaign.min_samples,
+                max_samples=campaign.max_samples,
+                sample_table_rows=int(len(samples)),
+                configuration_hashes=configuration_hashes,
+                paired_comparison=pairing,
+                scenario_summaries=campaign.scenario_manifests(),
+            )
     finally:
         os.environ.pop("ANTARES_MC_SCENARIO", None)
         for key, value in previous.items():
