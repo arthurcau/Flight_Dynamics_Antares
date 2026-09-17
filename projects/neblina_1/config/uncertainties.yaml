@@ -1,0 +1,113 @@
+schema_version: 1
+
+uncertainties:
+  # ------------------------------------------------------------------
+  # Launch Operations
+  # ------------------------------------------------------------------
+  launch_inclination:
+    enabled: true
+    nominal_yaml_path: launch.rail.inclination_deg
+    units: deg
+    distribution: uniform
+    min: 70.0
+    max: 90.0
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Arbitrary engineering limits until rail setup procedure is formalised."
+
+  launch_heading:
+    enabled: true
+    nominal_yaml_path: launch.rail.heading_deg
+    units: deg
+    distribution: uniform
+    min: 230.0
+    max: 250.0
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Bound assumption based on range envelope constraints."
+
+  # ------------------------------------------------------------------
+  # Aerodynamics
+  # ------------------------------------------------------------------
+  power_off_drag_multiplier:
+    enabled: true
+    units: dimensionless
+    distribution: normal
+    mean: 1.0
+    sigma: 0.1
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Arbitrary 10% sigma multiplier on nominal Cd curve. Needs OpenRocket/CFD bounds."
+
+  power_on_drag_multiplier:
+    enabled: true
+    units: dimensionless
+    distribution: normal
+    mean: 1.0
+    sigma: 0.1
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Arbitrary 10% sigma multiplier. Should correlate with power-off discrepancy later."
+
+  # ------------------------------------------------------------------
+  # Vehicle
+  # ------------------------------------------------------------------
+  vehicle_mass:
+    enabled: true
+    nominal_yaml_path: vehicle.mass
+    units: kg
+    distribution: normal
+    sigma: 0.01
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Arbitrary mass sigma (10g). Extremely low; needs repeated physical scale metrology."
+
+  # ------------------------------------------------------------------
+  # Propulsion
+  # ------------------------------------------------------------------
+  total_impulse_multiplier:
+    enabled: true
+    units: dimensionless
+    distribution: normal
+    mean: 1.0
+    sigma: 0.05
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Assumed 5% impulse variation. Requires replacement with genuine static fires."
+
+  # ------------------------------------------------------------------
+  # Environment
+  # ------------------------------------------------------------------
+  atmosphere_ensemble:
+    enabled: true
+    units: categorical
+    distribution: categorical
+    provenance:
+      source: MAGI
+      type: NATIVE_MODEL_ENSEMBLE
+      confidence: moderate
+      notes: "Samples distinct forecast members rather than artificial random factors."
+
+  site_elevation:
+    enabled: true
+    nominal_yaml_path: environment.elevation
+    units: m
+    distribution: normal
+    sigma: 5.0
+    provenance:
+      source: None
+      type: LEGACY_ASSUMPTION
+      confidence: low
+      notes: "Assumed DEM error model."
