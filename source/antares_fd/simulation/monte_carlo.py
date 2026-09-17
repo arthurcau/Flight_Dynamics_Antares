@@ -4,9 +4,12 @@ import yaml
 import subprocess
 import numpy as np
 import random
+import os
 
 from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
 from antares_fd.config.exceptions import ConfigurationError
+from antares_fd.simulation.monte_carlo_parameters import launch_angle_distribution
+from antares_fd.simulation.monte_carlo_storage import CampaignManager
 
 from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
 
@@ -139,20 +142,25 @@ def execute_monte_carlo(config, project_dir):
 
     flight = Flight(rocket, nominal_env, rail_length=rail_len, inclination=inc, heading=hdg)
     flt_cfg = mc_cfg.get("flight") or {}
-    inc_std = (flt_cfg.get("inclination") or {}).get("std", 0.0)
-    hdg_std = (flt_cfg.get("heading") or {}).get("std", 0.0)
 
     stoch_flight = StochasticFlight(
         flight,
-        inclination=(inc, inc_std) if inc_std else None,
-        heading=(hdg, hdg_std) if hdg_std else None,
+        inclination=launch_angle_distribution(inc, flt_cfg.get("inclination"), "inclination"),
+        heading=launch_angle_distribution(hdg, flt_cfg.get("heading"), "heading"),
     )
 
-    # 5. Output directory structure
-    run_timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H%M%SZ')
-    run_id = f"{run_timestamp}_{project_dir.name}_montecarlo"
-    results_dir = project_dir.parents[0].parent / "results" / project_dir.name / run_id
-    results_dir.mkdir(parents=True, exist_ok=True)
+    # 5. Output directory structure (supports campaign mode)
+    campaign_dir_env = os.environ.get("ANTARES_CAMPAIGN_DIR")
+    is_campaign_active = os.environ.get("ANTARES_CAMPAIGN_ACTIVE") == "1"
+
+    if campaign_dir_env:
+        results_dir = Path(campaign_dir_env)
+        run_id = os.environ.get("ANTARES_CAMPAIGN_RUN_ID", results_dir.name)
+    else:
+        run_timestamp = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H%M%SZ')
+        run_id = f"{run_timestamp}_{project_dir.name}_montecarlo"
+        results_dir = project_dir.parents[0].parent / "results" / project_dir.name / run_id
+        results_dir.mkdir(parents=True, exist_ok=True)
     
     filename = str(results_dir / "mc_sim")
     
@@ -163,34 +171,15 @@ def execute_monte_carlo(config, project_dir):
         environment=stoch_env,
         rocket=stoch_rocket,
         flight=stoch_flight,
-        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
+        export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_velocity'],
     )
-    # --- Capture all flights via Multiprocess Manager ---
-    import multiprocess
-    manager = multiprocess.Manager()
-    all_flights = manager.list()
+    # Use RocketPy's process backend for every shared object.
+    manager = CampaignManager()
+    manager.start()
+    all_flights = manager.TrajectoryStore(seed)
     
     _orig_run_single = mc._MonteCarlo__run_single_simulation
-    # Setup Progress Tracking
-    import time
-    from multiprocessing import Manager
-    manager = Manager()
-    shared_counter = manager.Value('i', 0)
-    start_time_val = manager.Value('d', time.time())
-    total_sims = manager.Value('i', 0)
-    counter_lock = manager.Lock()
-    
     def _patched_run_single(*args, **kwargs):
-        with counter_lock:
-            shared_counter.value += 1
-            completed = shared_counter.value
-            tot = total_sims.value
-        if tot > 0 and (completed % max(1, tot // 10) == 0 or completed == tot):
-            elapsed = time.time() - start_time_val.value
-            eta = (elapsed / completed) * (tot - completed)
-            progress = (completed / tot) * 100
-            print(f"[Monte Carlo Progress] {completed}/{tot} ({progress:.1f}%) | Elapsed: {elapsed:.1f}s | ETA: {eta:.1f}s")
-
         flt = _orig_run_single(*args, **kwargs)
         try:
             # We only extract what's needed for plotting to avoid pickle issues over IPC
@@ -215,29 +204,34 @@ def execute_monte_carlo(config, project_dir):
             
     remaining_sims = num_sims - already_done
     
-    if remaining_sims <= 0:
-        print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
-    else:
-        print(f"[Monte Carlo] Starting {remaining_sims} simulations (Resuming {already_done}/{num_sims}). Seed={seed}")
-        total_sims.value = remaining_sims
-        start_time_val.value = time.time()
-        
-        mc.simulate(number_of_simulations=remaining_sims, append=(already_done > 0), parallel=True)
+    try:
+        if remaining_sims <= 0:
+            print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
+        else:
+            print(f"[Monte Carlo] Starting {remaining_sims} simulations (Resuming {already_done}/{num_sims}). Seed={seed}")
+            mc.simulate(number_of_simulations=num_sims, append=(already_done > 0),
+                        parallel=True, include_function_data=False)
+
+        trajectory_snapshot = all_flights.snapshot()
+        all_flights = trajectory_snapshot["trajectories"]
+    finally:
+        mc._MonteCarlo__run_single_simulation = _orig_run_single
+        manager.shutdown()
 
     
     # 7. Write Manifest and Traceability
     try:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(project_dir)).decode().strip()
         dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=str(project_dir)).decode().strip())
-    except:
+    except Exception:
         commit = "unknown"
         dirty = False
 
     manifest = {
         "run": {
             "id": run_id,
-            "timestamp_utc": datetime.datetime.utcnow().isoformat(),
-            "status": "completed",
+            "timestamp_utc": datetime.datetime.now(datetime.UTC).isoformat(),
+            "status": "completed" if len(mc.outputs_log) >= num_sims else "failed",
             "requested_cases": num_sims,
             "completed_cases": len(mc.outputs_log) if hasattr(mc, 'outputs_log') else num_sims,
             "failed_cases": len(mc.errors_log) if hasattr(mc, 'errors_log') else 0,
@@ -250,11 +244,23 @@ def execute_monte_carlo(config, project_dir):
             "enabled": True,
             "seed": seed,
             "simulations": num_sims
-        }
+        },
+        "storage": {
+            "include_function_data": False,
+            "trajectories_seen": trajectory_snapshot["seen"],
+            "retained_trajectories": len(all_flights),
+            "trajectory_policy": "four_endpoint_extrema_plus_five_reservoir_samples",
+        },
     }
     
     with open(results_dir / "manifest.yaml", "w") as f:
         yaml.dump(manifest, f, default_flow_style=False)
+
+    if len(mc.outputs_log) < num_sims:
+        raise RuntimeError(
+            f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{num_sims} "
+            f"simulations exported. Check worker errors and results in {results_dir}."
+        )
         
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
     
@@ -262,15 +268,20 @@ def execute_monte_carlo(config, project_dir):
     from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions, plot_monte_carlo_convergence
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists():
-        plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, all_flights=all_flights)
+        plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, all_flights=all_flights,
+                                   sample_flights=trajectory_snapshot["samples"])
         plot_monte_carlo_distributions(outputs_file, results_dir, run_id)
         plot_monte_carlo_convergence(outputs_file, results_dir, run_id)
 
-    # 9. Generate LaTeX PDF Report
-    try:
-        from antares_fd.simulation.report import generate_latex_report
-        generate_latex_report(config, results_dir, run_id)
-    except Exception as e:
-        print(f"[Report] Failed to generate LaTeX report: {e}")
+    # 9. Generate Canonical Engineering PDF Report (standalone only)
+    if is_campaign_active:
+        print(f"[Campaign Mode] Monte Carlo outputs registered in campaign directory: {results_dir}")
+    else:
+        try:
+            from antares_fd.reporting import FlightDynamicsReport
+            report = FlightDynamicsReport(flight=flight, config=config, project_dir=project_dir, mc_results_dir=results_dir, run_id=run_id)
+            report.generate()
+        except Exception as e:
+            print(f"[Report] Failed to generate engineering PDF report: {e}")
 
     return mc

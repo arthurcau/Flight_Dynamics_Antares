@@ -21,14 +21,6 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     """
     Extracts complete quantitative engineering metrics from a simulated Flight.
     Every metric is computed exactly once to guarantee consistency across all reports.
-
-    Args:
-        flight: RocketPy Flight instance.
-        config: Optional ProjectConfig or loaded dictionary.
-        project_dir: Optional Path to project directory.
-
-    Returns:
-        Structured FlightMetrics containing single-source-of-truth values and timeseries vectors.
     """
     rocket = flight.rocket
     motor = rocket.motor
@@ -43,7 +35,6 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     coast_duration = float(t_apogee - t_burnout) if t_apogee > t_burnout else 0.0
 
     # Timeseries interpolation (Unified Time Vector)
-    # 0 to rail exit, rail exit to apogee, apogee to end
     t_ascent1 = np.linspace(0, t_liftoff, 50, endpoint=False)
     t_ascent2 = np.linspace(t_liftoff, t_apogee, 200, endpoint=False)
     t_descent = np.linspace(t_apogee, t_final, 300)
@@ -71,10 +62,12 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     ts_alpha = np.array([flight.angle_of_attack(t) for t in t_eval])
     ts_sm = np.array([flight.static_margin(t) for t in t_eval])
 
-    # Fix initial singularity for Q*alpha inside rail
-    rail_mask = (t_eval < t_liftoff)
+    # Fix initial singularity for Q*alpha inside rail (Bending indicator mask)
     ts_q_alpha = ts_q * np.abs(ts_alpha)
+    rail_mask = (t_eval < t_liftoff)
     ts_q_alpha[rail_mask] = 0.0
+    # Strict valid domain for Q*alpha bending proxy is only after rail exit.
+    post_rail_mask = (t_eval >= t_liftoff)
 
     # Propulsion and Mass Timeseries
     ts_thrust = np.array([motor.thrust(t) if t <= t_burnout else 0.0 for t in t_eval])
@@ -116,24 +109,27 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     apogee_asl = float(np.max(ts_z))
 
     drift_apogee = float(np.hypot(flight.x(t_apogee), flight.y(t_apogee)))
-    drift_final = float(np.hypot(ts_x[-1], ts_y[-1]))
-    landing_azimuth = float(np.degrees(np.arctan2(ts_x[-1], ts_y[-1])) % 360)
+    landing_east = float(ts_x[-1])
+    landing_north = float(ts_y[-1])
+    drift_final = float(np.hypot(landing_east, landing_north))
+    landing_azimuth = float(np.degrees(np.arctan2(landing_east, landing_north)) % 360)
 
-    # 4. Accelerations (Ascent vs Recovery)
+    # 4. Accelerations (Ascent strictly, since deployment shocks are unphysical numerical artifacts)
     ascent_mask = (t_eval <= t_apogee)
-    max_ascent_accel_ms2 = float(np.max(ts_a_tot[ascent_mask])) if np.any(ascent_mask) else 0.0
-    t_max_ascent_accel = float(t_eval[ascent_mask][np.argmax(ts_a_tot[ascent_mask])]) if np.any(ascent_mask) else 0.0
+    max_tot_accel = float(np.max(ts_a_tot[ascent_mask])) if np.any(ascent_mask) else 0.0
+    t_max_tot_accel = float(t_eval[ascent_mask][np.argmax(ts_a_tot[ascent_mask])]) if np.any(ascent_mask) else 0.0
 
-    max_tot_accel_ms2 = float(np.max(ts_a_tot))
-    t_max_tot_accel = float(t_eval[np.argmax(ts_a_tot)])
+    rail_accel_x = float(flight.ax(t_liftoff))
+    rail_accel_y = float(flight.ay(t_liftoff))
+    rail_accel_z = float(flight.az(t_liftoff))
+    rail_exit_accel = float(np.sqrt(rail_accel_x**2 + rail_accel_y**2 + rail_accel_z**2))
     
     # 5. Peak Aero
     max_q_idx = int(np.argmax(ts_q[ascent_mask])) if np.any(ascent_mask) else int(np.argmax(ts_q))
     t_max_q = float(t_eval[ascent_mask][max_q_idx]) if np.any(ascent_mask) else float(t_eval[max_q_idx])
     
-    post_rail_ascent = (t_eval >= t_liftoff) & (t_eval <= t_apogee)
-    peak_qa = float(np.max(ts_q_alpha[post_rail_ascent])) if np.any(post_rail_ascent) else 0.0
-    t_peak_qa = float(t_eval[post_rail_ascent][np.argmax(ts_q_alpha[post_rail_ascent])]) if np.any(post_rail_ascent) else 0.0
+    peak_qa = float(np.max(ts_q_alpha[post_rail_mask])) if np.any(post_rail_mask) else 0.0
+    t_peak_qa = float(t_eval[post_rail_mask][np.argmax(ts_q_alpha[post_rail_mask])]) if np.any(post_rail_mask) else 0.0
     
     # T/W Mechanics
     m_liftoff = float(rocket.total_mass(0))
@@ -142,6 +138,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     
     burn_tw = ts_thrust[(t_eval <= t_burnout)] / (ts_mass[(t_eval <= t_burnout)] * g0)
     peak_tw = float(np.max(burn_tw)) if len(burn_tw) > 0 else initial_tw
+    avg_burn_tw = float(np.mean(burn_tw)) if len(burn_tw) > 0 else initial_tw
     
     # Parachute events
     drogue_evt = None
@@ -152,9 +149,9 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
             deploy_t = float(p_time + getattr(p_obj, "lag", 0.0))
             is_drogue = "drogue" in p_obj.name.lower() or drogue_evt is None
             
-            # Shock: max accel in [deploy_t - 0.5, deploy_t + 2.5]
+            # The recovery shock is an unphysical numerical discontinuity due to CdS step change.
             shock_mask = (t_eval >= deploy_t - 0.5) & (t_eval <= deploy_t + 2.5)
-            shock_g = float(np.max(ts_a_tot[shock_mask]) / g0) if np.any(shock_mask) else 0.0
+            numerical_shock_g = float(np.max(ts_a_tot[shock_mask]) / g0) if np.any(shock_mask) else 0.0
             
             evt = ParachuteEvent(
                 name=p_obj.name,
@@ -165,8 +162,8 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
                 deploy_time=deploy_t,
                 lag=float(getattr(p_obj, "lag", 0.0)),
                 cd_s=float(p_obj.cd_s),
-                opening_shock_g=shock_g,
-                steady_sink_rate=None  # Estimated below
+                numerical_transient_shock_g=numerical_shock_g,
+                steady_sink_rate=None
             )
             if is_drogue:
                 drogue_evt = evt
@@ -175,7 +172,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
 
     # Estimate steady state sink rate
     if drogue_evt:
-        t_drogue_end = main_evt.trigger_time if main_evt else t_final
+        t_drogue_end = main_evt.time if main_evt else t_final
         t_mid = 0.5 * (drogue_evt.deploy_time + t_drogue_end)
         if t_mid < t_final and (t_mid - drogue_evt.deploy_time > 1.0):
             drogue_evt = ParachuteEvent(**{**drogue_evt.__dict__, "steady_sink_rate": float(abs(flight.vz(t_mid)))})
@@ -191,6 +188,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     burn_mask = (t_eval >= 0) & (t_eval <= t_burnout)
     sm_min_burn = float(np.min(ts_sm[burn_mask])) if np.any(burn_mask) else ts_sm[0]
     sm_max_burn = float(np.max(ts_sm[burn_mask])) if np.any(burn_mask) else ts_sm[0]
+    max_sm = float(np.max(ts_sm))
 
     # Coordinate field verification logic
     validation = None
@@ -208,15 +206,12 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         x_fuse = float(np.radians(lon_fuse - lon_pad) * r_earth * np.cos(np.radians(lat_pad)))
         y_fuse = float(np.radians(lat_fuse - lat_pad) * r_earth)
         
-        impact_x = float(ts_x[-1])
-        impact_y = float(ts_y[-1])
-        
         validation = {
             "has_field_data": True,
             "pad": {"lat": lat_pad, "lon": lon_pad},
             "predicted": {
-                "x": impact_x,
-                "y": impact_y,
+                "x": landing_east,
+                "y": landing_north,
                 "dist": drift_final,
                 "azimuth_deg": landing_azimuth,
             },
@@ -228,8 +223,8 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
                 "dist": float(np.hypot(x_nose, y_nose)),
                 "azimuth_deg": float(np.degrees(np.arctan2(x_nose, y_nose)) % 360),
                 "err_radial_m": float(np.hypot(x_nose, y_nose) - drift_final),
-                "err_x_m": float(x_nose - impact_x),
-                "err_y_m": float(y_nose - impact_y),
+                "err_x_m": float(x_nose - landing_east),
+                "err_y_m": float(y_nose - landing_north),
             },
             "fuselage": {
                 "lat": lat_fuse,
@@ -239,8 +234,8 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
                 "dist": float(np.hypot(x_fuse, y_fuse)),
                 "azimuth_deg": float(np.degrees(np.arctan2(x_fuse, y_fuse)) % 360),
                 "err_radial_m": float(np.hypot(x_fuse, y_fuse) - drift_final),
-                "err_x_m": float(x_fuse - impact_x),
-                "err_y_m": float(y_fuse - impact_y),
+                "err_x_m": float(x_fuse - landing_east),
+                "err_y_m": float(y_fuse - landing_north),
             }
         }
 
@@ -293,71 +288,57 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         rail_exit_time=t_liftoff,
         burnout_time=t_burnout,
         apogee_time=t_apogee,
-        flight_duration_time=t_final,
+        flight_duration=t_final,
         coast_duration=coast_duration,
         apogee_agl=apogee_agl,
         apogee_asl=apogee_asl,
         drift_at_apogee=drift_apogee,
-        drift_at_impact=drift_final,
-        impact_x=float(ts_x[-1]),
-        impact_y=float(ts_y[-1]),
+        landing_east=landing_east,
+        landing_north=landing_north,
+        landing_distance=drift_final,
         landing_azimuth=landing_azimuth,
-        max_speed=float(np.max(ts_speed)),
-        max_speed_time=float(t_eval[np.argmax(ts_speed)]),
+        max_velocity=float(np.max(ts_speed)),
+        max_velocity_time=float(t_eval[np.argmax(ts_speed)]),
         max_mach=float(np.max(ts_mach)),
         max_mach_time=float(t_eval[np.argmax(ts_mach)]),
-        burnout_speed=float(flight.speed(t_burnout)),
-        burnout_altitude_agl=float(flight.z(t_burnout) - elev),
-        max_ascent_acceleration_g=max_ascent_accel_ms2 / g0,
-        max_ascent_acceleration_time=t_max_ascent_accel,
-        max_ascent_vertical_acceleration_g=float(np.max(ts_az[ascent_mask]) / g0) if np.any(ascent_mask) else 0.0,
-        max_total_acceleration_g=max_tot_accel_ms2 / g0,
-        max_total_acceleration_time=t_max_tot_accel,
-        rail_length=getattr(flight, "rail_length", 5.2),
+        burnout_velocity=float(flight.speed(t_burnout)),
         rail_exit_velocity=float(flight.out_of_rail_velocity),
-        rail_exit_static_margin=float(flight.static_margin(t_liftoff)),
-        crosswind_speed=np.hypot(env.wind_velocity_x(elev+5.2), env.wind_velocity_y(elev+5.2)) if hasattr(env, 'wind_velocity_x') else 0.0,
-        crosswind_ratio=float(flight.out_of_rail_velocity / max(0.1, np.hypot(env.wind_velocity_x(elev+5.2), env.wind_velocity_y(elev+5.2)))) if hasattr(env, 'wind_velocity_x') else 0.0,
+        rail_exit_acceleration=rail_exit_accel,
+        max_total_acceleration=max_tot_accel / g0,
+        max_total_acceleration_time=t_max_tot_accel,
         max_dynamic_pressure=float(np.max(ts_q)),
-        max_dynamic_pressure_time=t_max_q,
-        max_dynamic_pressure_altitude=float(flight.z(t_max_q) - elev),
-        max_dynamic_pressure_mach=float(flight.mach_number(t_max_q)),
-        max_dynamic_pressure_aoa=float(flight.angle_of_attack(t_max_q)),
-        max_dynamic_pressure_static_margin=float(flight.static_margin(t_max_q)),
-        peak_q_alpha=peak_qa,
-        peak_q_alpha_time=t_peak_qa,
-        max_ascent_aoa=float(np.max(ts_alpha[post_rail_ascent])) if np.any(post_rail_ascent) else 0.0,
+        max_q_time=t_max_q,
+        max_q_altitude=float(flight.z(t_max_q) - elev),
+        max_q_mach=float(flight.mach_number(t_max_q)),
+        peak_valid_q_alpha=peak_qa,
+        peak_valid_q_alpha_time=t_peak_qa,
+        max_angle_of_attack=float(np.max(ts_alpha[post_rail_mask])) if np.any(post_rail_mask) else 0.0,
+        angle_of_attack_at_max_q=float(flight.angle_of_attack(t_max_q)),
+        static_margin_liftoff=float(flight.static_margin(0)),
+        static_margin_rail_exit=float(flight.static_margin(t_liftoff)),
+        static_margin_max_q=float(flight.static_margin(t_max_q)),
+        static_margin_burnout=float(flight.static_margin(t_burnout)),
+        minimum_burn_static_margin=sm_min_burn,
+        maximum_static_margin=max_sm,
+        maximum_angular_velocity=float(np.degrees(np.max(ts_omega_mag[ascent_mask]))) if np.any(ascent_mask) else 0.0,
         motor_name=getattr(motor, "name", "SolidMotor"),
+        burnout_mass=float(rocket.total_mass(t_burnout)),
         total_impulse=float(getattr(motor, "total_impulse", 0.0)),
         average_thrust=float(getattr(motor, "average_thrust", 0.0)),
         max_thrust=float(getattr(motor, "max_thrust", 0.0)),
-        burn_time=t_burnout,
         propellant_mass=float(getattr(motor, "propellant_initial_mass", m_liftoff - ts_mass[burn_mask][-1])),
-        specific_impulse=0.0, # Computed if valid
         initial_tw=initial_tw,
         rail_exit_tw=rail_exit_tw,
         peak_tw=peak_tw,
-        average_burn_tw=0.0,
-        liftoff_mass=m_liftoff,
-        rail_exit_mass=float(rocket.total_mass(t_liftoff)),
-        burnout_mass=float(rocket.total_mass(t_burnout)),
-        landing_mass=float(rocket.total_mass(t_final)),
-        dry_mass=float(rocket.mass),
-        cg_liftoff=float(rocket.center_of_mass(0)),
-        cg_burnout=float(rocket.center_of_mass(t_burnout)),
-        cp_liftoff=float(rocket.cp_position(0)),
-        cp_burnout=float(rocket.cp_position(t_burnout)),
-        static_margin_liftoff=float(flight.static_margin(0)),
-        static_margin_rail_exit=float(flight.static_margin(t_liftoff)),
-        static_margin_burnout=float(flight.static_margin(t_burnout)),
-        static_margin_min_burn=sm_min_burn,
-        static_margin_max_burn=sm_max_burn,
-        max_angular_velocity=float(np.degrees(np.max(ts_omega_mag[ascent_mask]))) if np.any(ascent_mask) else 0.0,
-        max_roll_rate=float(np.degrees(np.max(np.abs(ts_w3[ascent_mask])))) if np.any(ascent_mask) else 0.0,
+        average_burn_tw=avg_burn_tw,
+        drogue_deployment_time=drogue_evt.time if drogue_evt else None,
+        main_deployment_time=main_evt.time if main_evt else None,
+        drogue_descent_rate=drogue_evt.steady_sink_rate if drogue_evt else None,
+        main_descent_rate=main_evt.steady_sink_rate if main_evt else None,
         drogue_event=drogue_evt,
         main_event=main_evt,
         touchdown_velocity=v_impact,
-        touchdown_kinetic_energy=e_kin,
+        touchdown_energy=e_kin,
         validation=validation,
         timeseries=timeseries,
         atmosphere=atm_prof

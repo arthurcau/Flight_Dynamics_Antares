@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import numpy as np
 
 
@@ -17,7 +17,7 @@ class ParachuteEvent(EventRecord):
     deploy_time: float
     lag: float
     cd_s: float
-    opening_shock_g: float
+    numerical_transient_shock_g: float
     steady_sink_rate: Optional[float]
 
 
@@ -67,100 +67,78 @@ class FlightMetrics:
     longitude: float
     elevation_m: float
     
-    # 2. Temporal Timelines
+    # 2. Temporal Landmarks
     liftoff_time: float
     rail_exit_time: float
     burnout_time: float
     apogee_time: float
-    flight_duration_time: float
+    flight_duration: float
     coast_duration: float
 
     # 3. Trajectory & Landing
     apogee_agl: float
     apogee_asl: float
     drift_at_apogee: float
-    drift_at_impact: float
-    impact_x: float
-    impact_y: float
+    landing_east: float
+    landing_north: float
+    landing_distance: float
     landing_azimuth: float
 
     # 4. Kinematics (Speed & Mach)
-    max_speed: float
-    max_speed_time: float
+    max_velocity: float
+    max_velocity_time: float
     max_mach: float
     max_mach_time: float
-    burnout_speed: float
-    burnout_altitude_agl: float
+    burnout_velocity: float
+    rail_exit_velocity: float
+    rail_exit_acceleration: float
     
-    # 5. Ascending Acceleration (Airframe loads prior to deployment)
-    max_ascent_acceleration_g: float
-    max_ascent_acceleration_time: float
-    max_ascent_vertical_acceleration_g: float
-
-    # 6. Peak Acceleration (Including Deployment Shocks)
-    max_total_acceleration_g: float
+    # 5. Accelerations
+    max_total_acceleration: float
     max_total_acceleration_time: float
 
-    # 7. Rail Exit Dynamics
-    rail_length: float
-    rail_exit_velocity: float
-    rail_exit_static_margin: float
-    crosswind_speed: float
-    crosswind_ratio: float
-
-    # 8. Aerodynamic Loads (Max Q and Bending)
+    # 6. Aerodynamic Loads (Max Q and Bending Proxy)
     max_dynamic_pressure: float
-    max_dynamic_pressure_time: float
-    max_dynamic_pressure_altitude: float
-    max_dynamic_pressure_mach: float
-    max_dynamic_pressure_aoa: float
-    max_dynamic_pressure_static_margin: float
-    peak_q_alpha: float
-    peak_q_alpha_time: float
-    max_ascent_aoa: float
+    max_q_time: float
+    max_q_altitude: float
+    max_q_mach: float
+    peak_valid_q_alpha: float
+    peak_valid_q_alpha_time: float
+    
+    # 7. Stability & Attitude
+    max_angle_of_attack: float
+    angle_of_attack_at_max_q: float
+    static_margin_liftoff: float
+    static_margin_rail_exit: float
+    static_margin_max_q: float
+    static_margin_burnout: float
+    minimum_burn_static_margin: float
+    maximum_static_margin: float
+    maximum_angular_velocity: float
 
-    # 9. Propulsion & Mass
+    # 8. Propulsion & Mass
     motor_name: str
+    burnout_mass: float
     total_impulse: float
     average_thrust: float
     max_thrust: float
-    burn_time: float
     propellant_mass: float
-    specific_impulse: float
     initial_tw: float
     rail_exit_tw: float
     peak_tw: float
     average_burn_tw: float
     
-    liftoff_mass: float
-    rail_exit_mass: float
-    burnout_mass: float
-    landing_mass: float
-    dry_mass: float
-    
-    cg_liftoff: float
-    cg_burnout: float
-    cp_liftoff: float
-    cp_burnout: float
-    
-    # 10. Stability Tracking
-    static_margin_liftoff: float
-    static_margin_rail_exit: float
-    static_margin_burnout: float
-    static_margin_min_burn: float
-    static_margin_max_burn: float
-
-    # 11. Angular Rates
-    max_angular_velocity: float
-    max_roll_rate: float
-    
-    # 12. Recovery
+    # 9. Recovery
+    drogue_deployment_time: Optional[float]
+    main_deployment_time: Optional[float]
+    drogue_descent_rate: Optional[float]
+    main_descent_rate: Optional[float]
     drogue_event: Optional[ParachuteEvent]
     main_event: Optional[ParachuteEvent]
     touchdown_velocity: float
-    touchdown_kinetic_energy: float
+    touchdown_energy: float
 
-    # 13. Field Validation Data (If available)
+    # 10. Field Validation Data (If available)
     validation: Optional[Dict[str, Any]]
 
     # Timeseries arrays & Environment

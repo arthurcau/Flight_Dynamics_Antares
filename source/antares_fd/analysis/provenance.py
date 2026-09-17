@@ -127,7 +127,7 @@ def evaluate_model_validity(metrics: FlightMetrics) -> List[Dict[str, str]]:
     Evaluates simulation metrics against physics and aerodynamic model limits.
     """
     max_mach = metrics.max_mach
-    max_alpha = metrics.max_ascent_aoa
+    max_alpha = metrics.max_angle_of_attack
     apogee_asl = metrics.apogee_asl
     v_rail = metrics.rail_exit_velocity
 
