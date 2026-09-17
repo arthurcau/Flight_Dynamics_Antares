@@ -135,6 +135,10 @@ def execute_monte_carlo(config, project_dir):
         # the conservative default measured for this project and can be
         # overridden explicitly in the campaign YAML or CLI.
         effective_workers = min(os.cpu_count() or 2, 6)
+    if parallel and effective_workers == 1:
+        # A single worker is a useful explicit serial benchmark and is not a
+        # valid value for RocketPy's parallel backend.
+        parallel = False
     
     # Force seed reproducibility
     np.random.seed(seed)
@@ -412,19 +416,34 @@ def execute_monte_carlo(config, project_dir):
 
     outputs_file_path = results_dir / "mc_sim.outputs.txt"
     already_done = 0
-    if outputs_file_path.exists():
+    canonical_outputs_path = (
+        canonical_campaign.path / "outputs.parquet"
+        if canonical_campaign is not None
+        else None
+    )
+    if canonical_outputs_path is not None and canonical_outputs_path.exists():
+        # The canonical Parquet table is authoritative. An interrupted
+        # RocketPy run may leave a shorter JSONL compatibility file behind;
+        # using it would duplicate valid cases or rerun cases already saved.
+        cached_outputs = pd.read_parquet(canonical_outputs_path)
+        if not cached_outputs.empty:
+            mc.outputs_log = cached_outputs.to_dict("records")
+            already_done = len(mc.outputs_log)
+            mc.num_of_loaded_sims = already_done
+    if already_done == 0 and outputs_file_path.exists():
         with open(outputs_file_path, "r") as f:
             already_done = sum(1 for line in f if line.strip())
     if (
         already_done == 0
         and canonical_campaign is not None
-        and (canonical_campaign.path / "outputs.parquet").exists()
+        and canonical_outputs_path is not None
+        and canonical_outputs_path.exists()
     ):
         # Finished compact campaigns intentionally remove RocketPy's JSONL
         # compatibility files, while an interrupted run may have left empty
         # placeholders. Rehydrate only scalar records for resume; no
         # trajectory is reconstructed and no stochastic input is regenerated.
-        cached_outputs = pd.read_parquet(canonical_campaign.path / "outputs.parquet")
+        cached_outputs = pd.read_parquet(canonical_outputs_path)
         mc.outputs_log = cached_outputs.to_dict("records")
         already_done = len(mc.outputs_log)
         mc.num_of_loaded_sims = already_done

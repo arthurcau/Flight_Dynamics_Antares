@@ -7,7 +7,7 @@ import json
 import numpy as np
 from pathlib import Path
 from reportlab.lib import colors
-from reportlab.platypus import Table, TableStyle, Paragraph
+from reportlab.platypus import Table, LongTable, TableStyle, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import yaml
 import pandas as pd
@@ -49,18 +49,45 @@ def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
     return Paragraph(text, badge_style)
 
 
-def create_standard_table(data_matrix: List[List[Any]]) -> Table:
+def _cell(value: Any, header: bool = False) -> Any:
+    if isinstance(value, Paragraph):
+        return value
+    style = ParagraphStyle(
+        name="ReportTableHeader" if header else "ReportTableCell",
+        fontName="Helvetica-Bold" if header else "Helvetica",
+        fontSize=7.2 if header else 7.0,
+        leading=8.6 if header else 8.4,
+        textColor=colors.white if header else TEXT_DARK,
+        wordWrap="CJK",
+    )
+    return Paragraph(str(value).replace("&", "&amp;"), style)
+
+
+def create_standard_table(data_matrix: List[List[Any]], col_widths: Optional[List[float]] = None, landscape: bool = False) -> Table:
     if not data_matrix:
         return Table([["NO DATA"]])
-    
-    t = Table(data_matrix, repeatRows=1)
+
+    ncols = max(len(row) for row in data_matrix)
+    normalized = [list(row) + [""] * (ncols - len(row)) for row in data_matrix]
+    normalized = [[_cell(value, row_index == 0) for value in row] for row_index, row in enumerate(normalized)]
+    if col_widths is None:
+        from reportlab.lib.units import cm
+        available = (24.5 if landscape else 17.0) * cm
+        weights = []
+        for col in range(ncols):
+            max_len = max(len(str(data_matrix[row][col])) for row in range(len(data_matrix)))
+            weights.append(min(max(max_len, 8), 42))
+        total = sum(weights) or 1.0
+        col_widths = [available * weight / total for weight in weights]
+
+    t = LongTable(normalized, colWidths=col_widths, repeatRows=1, splitByRow=1, hAlign="LEFT")
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BG_LIGHT]),
@@ -104,7 +131,7 @@ def build_flight_performance_table(metrics: FlightMetrics) -> Table:
     data.append(["Apogee AGL", f"{metrics.apogee_agl:.1f} m"])
     data.append(["Max Mach", f"{metrics.max_mach:.2f} M"])
     data.append(["Max Velocity", f"{metrics.max_velocity:.1f} m/s"])
-    data.append(["Max Total Acceleration", f"{metrics.max_total_acceleration:.1f} g"])
+    data.append(["Max Total Acceleration (ascent)", f"{metrics.max_total_acceleration:.1f} g"])
     data.append(["Max Dynamic Pressure (Max-Q)", f"{metrics.max_dynamic_pressure/1000.0:.1f} kPa"])
     data.append(["Rail Exit Velocity", f"{metrics.rail_exit_velocity:.1f} m/s"])
     data.append(["Flight Duration", f"{metrics.flight_duration:.1f} s"])

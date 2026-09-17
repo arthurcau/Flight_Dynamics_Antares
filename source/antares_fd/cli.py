@@ -20,9 +20,9 @@ def _project(root: Path, name: str) -> Path:
 
 
 def _run_script(project_dir: Path) -> None:
-    script = project_dir / "simulations" / "monte_carlo_failure.py"
+    script = project_dir / "simulations" / "monte_carlo.py"
     if not script.exists():
-        script = project_dir / "simulations" / "monte_carlo.py"
+        script = project_dir / "simulations" / "monte_carlo_failure.py"
     spec = importlib.util.spec_from_file_location("antares_cli_monte_carlo", script)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load Monte Carlo script: {script}")
@@ -39,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     mc.add_argument("--profile", choices=sorted(PROFILES), default="development")
     mc.add_argument("--resume", metavar="CAMPAIGN_ID")
     mc.add_argument("--workers", type=int)
+    mc.add_argument("--all-scenarios", action="store_true", help="run configured stochastic scenario campaigns")
+    report = subparsers.add_parser("report", help="render a report from an existing campaign artifact")
+    report.add_argument("run_id")
+    report.add_argument("--project", default="neblina_1")
     archive = subparsers.add_parser("archive", help="archive a completed campaign")
     archive.add_argument("campaign_id")
     archive.add_argument("--project", default="neblina_1")
@@ -47,6 +51,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "archive":
         campaign = MonteCarloCampaign(args.project, root, campaign_id=args.campaign_id)
         print(campaign.archive())
+        return 0
+    if args.command == "report":
+        from antares_fd.reporting.pdf_report import FlightDynamicsReport
+        campaign_path = root / "results" / args.project / args.run_id
+        if not campaign_path.exists():
+            raise SystemExit(f"Campaign not found: {campaign_path}")
+        output = campaign_path / "evidence_report.pdf"
+        FlightDynamicsReport.from_artifacts(campaign_path, project_dir=_project(root, args.project)).generate(output)
+        print(output)
         return 0
     if args.command != "mc":
         return 2
@@ -91,9 +104,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.workers is not None:
         os.environ["ANTARES_MC_WORKERS"] = str(args.workers)
     os.environ["ANTARES_MC_MAX"] = str(campaign.max_samples if campaign.profile == "official" else target)
+    scenarios = ["nominal", "main_at_apogee", "only_reefing"] if args.all_scenarios else ["nominal"]
     try:
-        _run_script(project_dir)
+        for scenario_id in scenarios:
+            os.environ["ANTARES_MC_SCENARIO"] = scenario_id
+            _run_script(project_dir)
     finally:
+        os.environ.pop("ANTARES_MC_SCENARIO", None)
         for key, value in previous.items():
             if value is None:
                 os.environ.pop(key, None)

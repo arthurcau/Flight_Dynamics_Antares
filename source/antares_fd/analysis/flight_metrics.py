@@ -22,6 +22,26 @@ class ParachuteEvent(EventRecord):
 
 
 @dataclass(frozen=True)
+class EventRegistry:
+    """Canonical event timestamps shared by tables, plots and interpretation."""
+
+    ignition: Optional[EventRecord] = None
+    first_motion: Optional[EventRecord] = None
+    rail_exit: Optional[EventRecord] = None
+    peak_thrust: Optional[EventRecord] = None
+    max_acceleration: Optional[EventRecord] = None
+    max_q: Optional[EventRecord] = None
+    max_mach: Optional[EventRecord] = None
+    burnout: Optional[EventRecord] = None
+    apogee: Optional[EventRecord] = None
+    drogue_trigger: Optional[ParachuteEvent] = None
+    drogue_inflation: Optional[EventRecord] = None
+    main_trigger: Optional[ParachuteEvent] = None
+    main_inflation: Optional[EventRecord] = None
+    touchdown: Optional[EventRecord] = None
+
+
+@dataclass(frozen=True)
 class FlightTimeSeries:
     time: np.ndarray
     altitude_agl: np.ndarray
@@ -144,3 +164,7 @@ class FlightMetrics:
     # Timeseries arrays & Environment
     timeseries: FlightTimeSeries
     atmosphere: AtmosphereProfile
+    # Added at the end to preserve compatibility with archived constructors.
+    ignition_tw: float = 0.0
+    aero_analysis_window: Dict[str, Any] = field(default_factory=dict)
+    events: EventRegistry = field(default_factory=EventRegistry)

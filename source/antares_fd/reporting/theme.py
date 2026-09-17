@@ -36,6 +36,22 @@ STATUS_INFO_FG = colors.HexColor("#075985")
 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate, Paragraph
+from pathlib import Path
+
+
+def save_figure(fig, output_path: Path, preview: bool = True) -> Path:
+    """Write the authoritative engineering figure as vector PDF.
+
+    A PNG is emitted only when the caller requests a non-PDF path, which is
+    retained for legacy previews. Report generation uses the returned PDF.
+    """
+    output_path = Path(output_path)
+    pdf_path = output_path if output_path.suffix.lower() == ".pdf" else output_path.with_suffix(".pdf")
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+    if preview and output_path.suffix.lower() != ".pdf":
+        fig.savefig(output_path, format="png", dpi=160, bbox_inches="tight")
+    return pdf_path
 
 def setup_report_styles():
     from reportlab.lib.styles import StyleSheet1

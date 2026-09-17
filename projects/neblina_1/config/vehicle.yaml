@@ -128,6 +128,9 @@ vehicle:
     maximum_expected_velocity: null
     maximum_expected_dynamic_pressure: null
     maximum_expected_acceleration: null
+    aero_analysis_window:
+      minimum_dynamic_pressure_pa: 100.0
+      minimum_speed_mps: 20.0
   sanity_limits:
     dry_mass:
       minimum: null

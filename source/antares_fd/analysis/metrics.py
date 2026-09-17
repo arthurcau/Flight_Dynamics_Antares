@@ -13,7 +13,8 @@ from antares_fd.analysis.flight_metrics import (
     FlightTimeSeries,
     AtmosphereProfile,
     EventRecord,
-    ParachuteEvent
+    ParachuteEvent,
+    EventRegistry,
 )
 
 
@@ -62,12 +63,27 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     ts_alpha = np.array([flight.angle_of_attack(t) for t in t_eval])
     ts_sm = np.array([flight.static_margin(t) for t in t_eval])
 
-    # Fix initial singularity for Q*alpha inside rail (Bending indicator mask)
+    # Q*alpha is an aerodynamic bending-load indicator, not a structural
+    # bending moment.  Its physically useful window is configurable and is
+    # intentionally restricted to powered ascent/coast before apogee.
     ts_q_alpha = ts_q * np.abs(ts_alpha)
     rail_mask = (t_eval < t_liftoff)
     ts_q_alpha[rail_mask] = 0.0
-    # Strict valid domain for Q*alpha bending proxy is only after rail exit.
-    post_rail_mask = (t_eval >= t_liftoff)
+    model_limits = {}
+    if config is not None:
+        try:
+            model_limits = dict(config.vehicle.get("model_limits", {}))
+        except (AttributeError, TypeError):
+            model_limits = {}
+    window_cfg = dict(model_limits.get("aero_analysis_window", {}))
+    min_q = float(window_cfg.get("minimum_dynamic_pressure_pa", 100.0))
+    min_speed = float(window_cfg.get("minimum_speed_mps", 20.0))
+    aero_mask = (
+        (t_eval >= t_liftoff)
+        & (t_eval <= t_apogee)
+        & (ts_q >= min_q)
+        & (ts_speed >= min_speed)
+    )
 
     # Propulsion and Mass Timeseries
     ts_thrust = np.array([motor.thrust(t) if t <= t_burnout else 0.0 for t in t_eval])
@@ -128,12 +144,16 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     max_q_idx = int(np.argmax(ts_q[ascent_mask])) if np.any(ascent_mask) else int(np.argmax(ts_q))
     t_max_q = float(t_eval[ascent_mask][max_q_idx]) if np.any(ascent_mask) else float(t_eval[max_q_idx])
     
-    peak_qa = float(np.max(ts_q_alpha[post_rail_mask])) if np.any(post_rail_mask) else 0.0
-    t_peak_qa = float(t_eval[post_rail_mask][np.argmax(ts_q_alpha[post_rail_mask])]) if np.any(post_rail_mask) else 0.0
+    peak_qa = float(np.max(ts_q_alpha[aero_mask])) if np.any(aero_mask) else 0.0
+    t_peak_qa = float(t_eval[aero_mask][np.argmax(ts_q_alpha[aero_mask])]) if np.any(aero_mask) else 0.0
+    max_mach_idx = int(np.argmax(ts_mach))
+    t_max_mach = float(t_eval[max_mach_idx])
     
     # T/W Mechanics
     m_liftoff = float(rocket.total_mass(0))
     initial_tw = float(motor.thrust(0) / (m_liftoff * g0)) if m_liftoff > 0 else 0.0
+    t_ignition = float(getattr(motor, "burn_start_time", 0.0))
+    ignition_tw = float(motor.thrust(t_ignition) / (rocket.total_mass(t_ignition) * g0)) if rocket.total_mass(t_ignition) > 0 else 0.0
     rail_exit_tw = float(motor.thrust(t_liftoff) / (rocket.total_mass(t_liftoff) * g0)) if rocket.total_mass(t_liftoff) > 0 else 0.0
     
     burn_tw = ts_thrust[(t_eval <= t_burnout)] / (ts_mass[(t_eval <= t_burnout)] * g0)
@@ -181,6 +201,8 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         if t_eval_main > main_evt.deploy_time:
             main_evt = ParachuteEvent(**{**main_evt.__dict__, "steady_sink_rate": float(abs(flight.vz(t_eval_main)))})
 
+    # RocketPy's vertical velocity is signed (downward is negative).  The
+    # engineering touchdown speed and energy use positive magnitude.
     v_impact = float(abs(flight.vz(t_final)))
     e_kin = float(0.5 * ts_mass[-1] * (v_impact**2))
 
@@ -300,7 +322,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         max_velocity=float(np.max(ts_speed)),
         max_velocity_time=float(t_eval[np.argmax(ts_speed)]),
         max_mach=float(np.max(ts_mach)),
-        max_mach_time=float(t_eval[np.argmax(ts_mach)]),
+        max_mach_time=t_max_mach,
         burnout_velocity=float(flight.speed(t_burnout)),
         rail_exit_velocity=float(flight.out_of_rail_velocity),
         rail_exit_acceleration=rail_exit_accel,
@@ -312,7 +334,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         max_q_mach=float(flight.mach_number(t_max_q)),
         peak_valid_q_alpha=peak_qa,
         peak_valid_q_alpha_time=t_peak_qa,
-        max_angle_of_attack=float(np.max(ts_alpha[post_rail_mask])) if np.any(post_rail_mask) else 0.0,
+        max_angle_of_attack=float(np.max(ts_alpha[aero_mask])) if np.any(aero_mask) else 0.0,
         angle_of_attack_at_max_q=float(flight.angle_of_attack(t_max_q)),
         static_margin_liftoff=float(flight.static_margin(0)),
         static_margin_rail_exit=float(flight.static_margin(t_liftoff)),
@@ -341,5 +363,27 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         touchdown_energy=e_kin,
         validation=validation,
         timeseries=timeseries,
-        atmosphere=atm_prof
+        atmosphere=atm_prof,
+        ignition_tw=ignition_tw,
+        aero_analysis_window={
+            "start": "rail_exit",
+            "end": "apogee",
+            "minimum_dynamic_pressure_pa": min_q,
+            "minimum_speed_mps": min_speed,
+        },
+        events=EventRegistry(
+            ignition=EventRecord("Ignition", t_ignition, float(flight.z(t_ignition) - elev), float(flight.dynamic_pressure(t_ignition)), float(flight.speed(t_ignition))),
+            first_motion=EventRecord("First motion", 0.0, float(flight.z(0.0) - elev), float(flight.dynamic_pressure(0.0)), float(flight.speed(0.0))),
+            rail_exit=EventRecord("Rail exit", t_liftoff, float(flight.z(t_liftoff) - elev), float(flight.dynamic_pressure(t_liftoff)), float(flight.speed(t_liftoff))),
+            max_acceleration=EventRecord("Max acceleration", t_max_tot_accel, float(flight.z(t_max_tot_accel) - elev), float(flight.dynamic_pressure(t_max_tot_accel)), float(flight.speed(t_max_tot_accel))),
+            max_q=EventRecord("Max-Q", t_max_q, float(flight.z(t_max_q) - elev), float(flight.dynamic_pressure(t_max_q)), float(flight.speed(t_max_q))),
+            max_mach=EventRecord("Max Mach", t_max_mach, float(flight.z(t_max_mach) - elev), float(flight.dynamic_pressure(t_max_mach)), float(ts_speed[max_mach_idx])),
+            burnout=EventRecord("Burnout", t_burnout, float(flight.z(t_burnout) - elev), float(flight.dynamic_pressure(t_burnout)), float(flight.speed(t_burnout))),
+            apogee=EventRecord("Apogee", t_apogee, apogee_agl, float(flight.dynamic_pressure(t_apogee)), float(flight.speed(t_apogee))),
+            drogue_trigger=drogue_evt,
+            drogue_inflation=EventRecord("Drogue inflation", drogue_evt.deploy_time, drogue_evt.altitude_agl, drogue_evt.dynamic_pressure, drogue_evt.speed) if drogue_evt else None,
+            main_trigger=main_evt,
+            main_inflation=EventRecord("Main inflation", main_evt.deploy_time, main_evt.altitude_agl, main_evt.dynamic_pressure, main_evt.speed) if main_evt else None,
+            touchdown=EventRecord("Touchdown", t_final, 0.0, float(flight.dynamic_pressure(t_final)), v_impact),
+        )
     )

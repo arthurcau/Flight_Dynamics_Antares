@@ -1,5 +1,5 @@
 monte_carlo:
-  num_simulations: 200
+  num_simulations: 500
   profile: development
   batch_size: 250
   parallel: true

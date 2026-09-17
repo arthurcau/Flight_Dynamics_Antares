@@ -94,8 +94,10 @@ def run_project_campaign(simulations_dir: Path) -> Path:
     # Put nominal first
     deterministic_scripts.sort(key=lambda p: 0 if p.stem.lower() == "nominal" else 1)
 
-    # Prefer monte_carlo_failure over standard monte_carlo if both present
-    mc_scripts.sort(key=lambda p: 0 if "failure" in p.stem.lower() else 1)
+    # The ordinary campaign is the nominal stochastic analysis.  A file named
+    # ``monte_carlo_failure`` is a failure-mode campaign and must never be
+    # silently selected as the nominal population.
+    mc_scripts.sort(key=lambda p: 0 if "failure" not in p.stem.lower() else 1)
 
     # 4. Execute Deterministic Simulations
     scenario_flights: Dict[str, Any] = {}

@@ -82,10 +82,11 @@ class RequirementDB:
                     
                 if margin is not None:
                     # Positive margin is healthy. 
-                    # If margin is negative but bounded by tolerance, it's MARGINAL.
+                    # A tolerance is recorded for traceability but never turns
+                    # a negative engineering margin into a passing class.
                     is_nominal = (margin >= 0)
-                    is_marginal = (not is_nominal) and (abs(margin) <= tolerance)
-                    is_failed = (margin < -tolerance)
+                    is_marginal = False
+                    is_failed = (margin < 0)
 
                     if source_type in ["FORMAL_REQUIREMENT", "ANTARES_REQUIREMENT", "HARDWARE_QUALIFICATION_LIMIT"]:
                         if is_nominal: status = "SATISFIED"

@@ -62,9 +62,10 @@ uncertainties:
   # ------------------------------------------------------------------
   vehicle_mass:
     enabled: true
-    nominal_yaml_path: vehicle.mass
+    nominal_yaml_path: vehicle.mass_properties.mass_without_motor
     units: kg
     distribution: normal
+    mean: 21.186
     sigma: 0.01
     provenance:
       source: None
@@ -102,9 +103,10 @@ uncertainties:
 
   site_elevation:
     enabled: true
-    nominal_yaml_path: environment.elevation
+    nominal_yaml_path: launch.site.elevation
     units: m
     distribution: normal
+    mean: 495.0
     sigma: 5.0
     provenance:
       source: None

@@ -42,6 +42,25 @@ def execute_monte_carlo(config, project_dir):
         
     num_sims = mc_cfg.get("num_simulations", 10)
     seed = mc_cfg.get("random_seed", 42)
+    scenario_id = os.environ.get("ANTARES_MC_SCENARIO", "nominal")
+    if scenario_id == "ballistic":
+        config.recovery["enabled"] = False
+    elif scenario_id == "main_at_apogee":
+        for device in config.recovery.get("devices", []):
+            if device.get("id") == "drogue":
+                device["enabled"] = False
+            elif device.get("id") == "main":
+                device["trigger"] = {"type": "apogee"}
+    elif scenario_id == "only_reefing":
+        main_cd_s = None
+        for device in config.recovery.get("devices", []):
+            if device.get("id") == "main":
+                main_cd_s = device.get("aerodynamics", {}).get("cd_s")
+        for device in config.recovery.get("devices", []):
+            if device.get("id") == "drogue" and main_cd_s is not None:
+                device["aerodynamics"]["cd_s"] = main_cd_s * 0.15
+    if scenario_id not in {"nominal", "main_at_apogee", "only_reefing", "ballistic"}:
+        raise ConfigurationError(f"Unsupported stochastic scenario: {scenario_id}")
     
     # Force seed reproducibility
     np.random.seed(seed)
@@ -156,6 +175,9 @@ def execute_monte_carlo(config, project_dir):
     if campaign_dir_env:
         results_dir = Path(campaign_dir_env)
         run_id = os.environ.get("ANTARES_CAMPAIGN_RUN_ID", results_dir.name)
+        if scenario_id != "nominal":
+            results_dir = results_dir / "scenarios" / scenario_id
+            results_dir.mkdir(parents=True, exist_ok=True)
     else:
         run_timestamp = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H%M%SZ')
         run_id = f"{run_timestamp}_{project_dir.name}_montecarlo"

@@ -51,7 +51,7 @@ def _output_frame(records: list[dict[str, Any]], samples: pd.DataFrame | None) -
         frame["case_id"] = frame.get("index", np.arange(len(frame)))
     frame["case_id"] = pd.to_numeric(frame["case_id"], errors="coerce").astype("Int64")
     aliases = {
-        "apogee": "apogee_agl", "apogee_time": "apogee_time", "x_impact": "landing_east",
+        "apogee_time": "apogee_time", "x_impact": "landing_east",
         "y_impact": "landing_north", "impact_velocity": "touchdown_velocity",
         "max_mach_number": "max_mach", "max_dynamic_pressure": "max_dynamic_pressure",
         "out_of_rail_velocity": "rail_exit_velocity", "max_speed": "max_velocity",
@@ -60,10 +60,26 @@ def _output_frame(records: list[dict[str, Any]], samples: pd.DataFrame | None) -
     for old, new in aliases.items():
         if old in frame and new not in frame:
             frame[new] = frame[old]
+    # RocketPy exports ``apogee`` as altitude above sea level.  Keep that
+    # source value and derive AGL from the exact elevation used by the case.
+    # The previous alias copied ASL into an AGL column, creating an apparent
+    # ~495 m nominal/Monte-Carlo discrepancy.
+    if "apogee" in frame:
+        elevation = pd.Series(0.0, index=frame.index)
+        if samples is not None and "site_elevation" in samples:
+            elevation = pd.to_numeric(samples.set_index("case_id")["site_elevation"], errors="coerce").reindex(frame["case_id"].tolist()).reset_index(drop=True)
+            elevation.index = frame.index
+        elif "rocketpy_elevation" in frame:
+            elevation = pd.to_numeric(frame["rocketpy_elevation"], errors="coerce").fillna(0.0)
+        frame["apogee_asl"] = pd.to_numeric(frame["apogee"], errors="coerce")
+        frame["apogee_agl"] = frame["apogee_asl"] - elevation.fillna(0.0)
     if "max_acceleration" in frame and "max_total_acceleration" not in frame:
         frame["max_total_acceleration"] = pd.to_numeric(frame["max_acceleration"], errors="coerce") / 9.80665
     if "landing_east" in frame and "landing_north" in frame:
         frame["landing_distance"] = np.hypot(frame["landing_east"], frame["landing_north"])
+    if "touchdown_velocity" in frame:
+        frame["touchdown_velocity_signed"] = pd.to_numeric(frame["touchdown_velocity"], errors="coerce")
+        frame["touchdown_velocity"] = frame["touchdown_velocity_signed"].abs()
     if samples is not None and "seed" not in frame and "seed" in samples:
         seed_map = samples.set_index("case_id")["seed"]
         frame["seed"] = frame["case_id"].map(seed_map)
@@ -251,6 +267,7 @@ def _write_plot_artifacts(directory: Path, outputs: pd.DataFrame, convergence: p
         return
     try:
         import matplotlib.pyplot as plt
+        from antares_fd.reporting.theme import save_figure
     except ImportError:
         return
     directory.mkdir(parents=True, exist_ok=True)
@@ -262,34 +279,34 @@ def _write_plot_artifacts(directory: Path, outputs: pd.DataFrame, convergence: p
         axis.axvline(values.quantile(0.50), color="#111827", linestyle="-", label="P50")
         axis.axvline(values.quantile(0.95), color="#dc2626", linestyle="--", label="P95")
         axis.set(xlabel="Apogee AGL (m)", ylabel="Cases", title="Apogee distribution")
-        axis.legend(); fig.tight_layout(); fig.savefig(directory / "apogee_distribution.png", dpi=140); plt.close(fig)
+        axis.legend(); fig.tight_layout(); save_figure(fig, directory / "apogee_distribution.pdf", preview=False); plt.close(fig)
     if {"landing_east", "landing_north"}.issubset(outputs.columns):
         fig, axis = plt.subplots(figsize=(7, 5))
         axis.scatter(outputs["landing_east"], outputs["landing_north"], s=8, alpha=0.35, rasterized=True)
         axis.scatter([0], [0], marker="*", color="black")
         axis.set(xlabel="East (m)", ylabel="North (m)", title="Landing dispersion")
-        axis.axis("equal"); fig.tight_layout(); fig.savefig(directory / "landing_dispersion.png", dpi=140); plt.close(fig)
+        axis.axis("equal"); fig.tight_layout(); save_figure(fig, directory / "landing_dispersion.pdf", preview=False); plt.close(fig)
     if "touchdown_velocity" in outputs:
         fig, axis = plt.subplots(figsize=(7, 4))
         axis.hist(pd.to_numeric(outputs["touchdown_velocity"], errors="coerce").dropna(), bins=30, color="#7c3aed", alpha=0.8)
         axis.axvline(0, color="black", linewidth=1); axis.set(xlabel="Touchdown velocity (m/s)", ylabel="Cases", title="Touchdown distribution")
-        fig.tight_layout(); fig.savefig(directory / "touchdown_distribution.png", dpi=140); plt.close(fig)
+        fig.tight_layout(); save_figure(fig, directory / "touchdown_distribution.pdf", preview=False); plt.close(fig)
     if not convergence.empty and "value" in convergence:
         figure, axis = plt.subplots(figsize=(7, 4))
         apogee = convergence[convergence["metric"] == "apogee_p50"]
         if not apogee.empty:
             axis.plot(apogee["checkpoint"], apogee["value"], marker="o")
         axis.set(xlabel="Cases", ylabel="P50 apogee (m)", title="Apogee convergence")
-        figure.tight_layout(); figure.savefig(directory / "convergence_apogee.png", dpi=140); plt.close(figure)
+        figure.tight_layout(); save_figure(figure, directory / "convergence_apogee.pdf", preview=False); plt.close(figure)
     if not sensitivity.empty:
         apogee = sensitivity[sensitivity["output"] == "apogee_agl"].sort_values("coefficient")
         if not apogee.empty:
             figure, axis = plt.subplots(figsize=(7, 4)); axis.barh(apogee["input"], apogee["coefficient"], color="#0891b2")
-            axis.set(xlabel="Spearman rho", title="Apogee sensitivity (association)"); figure.tight_layout(); figure.savefig(directory / "sensitivity_apogee.png", dpi=140); plt.close(figure)
+            axis.set(xlabel="Spearman rho", title="Apogee sensitivity (association)"); figure.tight_layout(); save_figure(figure, directory / "sensitivity_apogee.pdf", preview=False); plt.close(figure)
     if not compliance.empty:
         figure, axis = plt.subplots(figsize=(7, 4)); axis.bar(compliance["requirement"], compliance["probability_satisfied"], color="#16a34a")
         axis.set_ylim(0, 1.05); axis.set_ylabel("Probability satisfied"); axis.tick_params(axis="x", rotation=45)
-        figure.tight_layout(); figure.savefig(directory / "compliance_probability.png", dpi=140); plt.close(figure)
+        figure.tight_layout(); save_figure(figure, directory / "compliance_probability.pdf", preview=False); plt.close(figure)
         margin_columns = [column for column in ("p05_margin", "p50_margin", "p95_margin") if column in compliance]
         if margin_columns:
             figure, axis = plt.subplots(figsize=(7, 4))
@@ -297,4 +314,4 @@ def _write_plot_artifacts(directory: Path, outputs: pd.DataFrame, convergence: p
             for _, row in compliance.iterrows():
                 axis.plot([row["requirement"]] * len(margin_columns), [row[column] for column in margin_columns], "o-")
             axis.set_ylabel("Requirement margin"); axis.tick_params(axis="x", rotation=45)
-            figure.tight_layout(); figure.savefig(directory / "requirement_margins.png", dpi=140); plt.close(figure)
+            figure.tight_layout(); save_figure(figure, directory / "requirement_margins.pdf", preview=False); plt.close(figure)

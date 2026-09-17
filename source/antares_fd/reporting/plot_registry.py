@@ -14,7 +14,7 @@ import json
 import pandas as pd
 
 from antares_fd.analysis.flight_metrics import FlightMetrics
-from .theme import setup_matplotlib_theme
+from .theme import setup_matplotlib_theme, save_figure
 from antares_fd.simulation.statistics import calculate_covariance_ellipse
 
 
@@ -106,7 +106,7 @@ def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -165,7 +165,7 @@ def generate_kinematics_chart(metrics: FlightMetrics, output_path: Path) -> Path
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -226,7 +226,7 @@ def generate_propulsion_and_loads_chart(metrics: FlightMetrics, output_path: Pat
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -279,7 +279,7 @@ def generate_stability_and_attitude_chart(metrics: FlightMetrics, output_path: P
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -333,7 +333,7 @@ def generate_full_atmosphere_chart(metrics: FlightMetrics, output_path: Path) ->
     fig.suptitle("MAGI High-Fidelity Atmospheric Environmental Profile", fontsize=10.5, y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -369,7 +369,7 @@ def generate_recovery_descent_chart(metrics: FlightMetrics, output_path: Path) -
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -408,7 +408,7 @@ def generate_trajectory_views_chart(metrics: FlightMetrics, output_path: Path) -
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -459,7 +459,7 @@ def generate_multi_scenario_chart(scenario_metrics: Dict[str, FlightMetrics], ou
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -510,7 +510,7 @@ def generate_landing_validation_map_chart(validation_data: Dict[str, Any], outpu
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -582,7 +582,7 @@ def generate_mc_dispersion_chart(outputs_file: Path, output_path: Path, run_id: 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # 140 DPI is sufficient for the chart's report size and keeps the
     # consolidated PDF smaller than separate high-resolution MC exports.
-    fig.savefig(output_path, dpi=140)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -658,7 +658,7 @@ def generate_mc_distributions_chart(outputs_file: Path, output_path: Path) -> Op
     fig.suptitle("Monte Carlo Output Distributions & Requirement Compliance", fontsize=10, y=0.99)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=140)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -717,7 +717,7 @@ def generate_mc_convergence_chart(outputs_file: Path, output_path: Path) -> Opti
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=140)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
 
@@ -756,6 +756,6 @@ def generate_sensitivity_tornado_chart(sensitivity_data: Dict[str, Any], output_
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    save_figure(fig, output_path)
     plt.close(fig)
     return output_path
