@@ -46,7 +46,7 @@ def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
 
 
 def create_standard_table(data_matrix: List[List[Any]]) -> Table:
-    t = Table(data_matrix)
+    t = Table(data_matrix, repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
