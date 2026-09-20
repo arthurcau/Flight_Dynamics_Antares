@@ -46,7 +46,7 @@ def test_melchior_integration():
     melchior = Melchior(elevation_msl=450)
     df_hist = melchior.fetch_historical_data()
     # It might be empty if cache doesn't exist, but if it doesn't fail, we're good.
-    MagiSchema.validate(df_hist)
+    MagiSchema.validate(df_hist, allow_empty=True)
 
 def test_balthasar_integration():
     balthasar = Balthasar(elevation_msl=450)

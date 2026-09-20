@@ -31,11 +31,10 @@ def test_export_case_a(tmp_path):
     
     export_rocketpy_ensemble(ensemble, output=str(output_path), horizon_hours=24, timestep_hours=1)
     
-    ds = xr.open_dataset(output_path)
-    assert len(ds.time) == 25
-    
-    diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
-    assert diff_ns == np.timedelta64(24, 'h')
+    with xr.open_dataset(output_path) as ds:
+        assert len(ds.time) == 25
+        diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
+        assert diff_ns == np.timedelta64(24, 'h')
 
 def test_export_case_b(tmp_path):
     ensemble = _create_mock_ensemble()
@@ -43,11 +42,10 @@ def test_export_case_b(tmp_path):
     
     export_rocketpy_ensemble(ensemble, output=str(output_path), horizon_hours=168, timestep_hours=1)
     
-    ds = xr.open_dataset(output_path)
-    assert len(ds.time) == 169
-    
-    diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
-    assert diff_ns == np.timedelta64(168, 'h')
+    with xr.open_dataset(output_path) as ds:
+        assert len(ds.time) == 169
+        diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
+        assert diff_ns == np.timedelta64(168, 'h')
 
 def test_export_case_c(tmp_path):
     ensemble = _create_mock_ensemble()
@@ -55,11 +53,10 @@ def test_export_case_c(tmp_path):
     
     export_rocketpy_ensemble(ensemble, output=str(output_path), horizon_hours=168, timestep_hours=3)
     
-    ds = xr.open_dataset(output_path)
-    assert len(ds.time) == 57
-    
-    diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
-    assert diff_ns == np.timedelta64(168, 'h')
+    with xr.open_dataset(output_path) as ds:
+        assert len(ds.time) == 57
+        diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
+        assert diff_ns == np.timedelta64(168, 'h')
 
 def test_export_case_d(tmp_path):
     ensemble = _create_mock_ensemble()
@@ -67,19 +64,18 @@ def test_export_case_d(tmp_path):
     
     export_rocketpy_ensemble(ensemble, output=str(output_path), horizon_hours=168, timestep_hours=6)
     
-    ds = xr.open_dataset(output_path)
-    assert len(ds.time) == 29
-    
-    diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
-    assert diff_ns == np.timedelta64(168, 'h')
-    
-    # Check dimensions and variables
-    assert "member" in ds.dims
-    assert "time" in ds.dims
-    assert "pressure_level" in ds.dims
-    assert "temperature" in ds.variables
-    assert "u_wind" in ds.variables
-    assert "v_wind" in ds.variables
+    with xr.open_dataset(output_path) as ds:
+        assert len(ds.time) == 29
+        diff_ns = np.timedelta64(ds.time.values[-1] - ds.time.values[0], 'ns')
+        assert diff_ns == np.timedelta64(168, 'h')
+        
+        # Check dimensions and variables
+        assert "member" in ds.dims
+        assert "time" in ds.dims
+        assert "pressure_level" in ds.dims
+        assert "temperature" in ds.variables
+        assert "u_wind" in ds.variables
+        assert "v_wind" in ds.variables
 
 def test_rocketpy_integration(tmp_path):
     """
@@ -108,10 +104,10 @@ def test_rocketpy_integration(tmp_path):
     
     # Test member selection
     env.select_ensemble_member(0)
-    assert env.get_temperature(0) > 0 # Should return a finite value
+    assert env.temperature(0) > 0 # Should return a finite value
     
     env.select_ensemble_member(1)
-    assert env.get_temperature(5000) > 0
+    assert env.temperature(5000) > 0
     
     # Test +120h datetime
     env.set_date((2026, 8, 13, 12))
@@ -121,4 +117,4 @@ def test_rocketpy_integration(tmp_path):
         dictionary=MAGI_ROCKETPY_MAPPING
     )
     env.select_ensemble_member(2)
-    assert env.get_temperature(1000) > 0
+    assert env.temperature(1000) > 0

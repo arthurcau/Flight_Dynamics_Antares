@@ -15,7 +15,7 @@ def test_atmospheric_profile_validation_success():
         source_type="deterministic",
         model="TestModel",
         run_time_utc=None,
-        valid_time_utc=datetime.datetime.utcnow(),
+        valid_time_utc=datetime.datetime.now(datetime.timezone.utc),
         latitude_deg=0.0,
         longitude_deg=0.0,
         member_id=None
@@ -34,7 +34,7 @@ def test_atmospheric_profile_validation_length_mismatch():
             source_type="deterministic",
             model="TestModel",
             run_time_utc=None,
-            valid_time_utc=datetime.datetime.utcnow(),
+            valid_time_utc=datetime.datetime.now(datetime.timezone.utc),
             latitude_deg=0.0,
             longitude_deg=0.0,
             member_id=None
@@ -52,7 +52,7 @@ def test_atmospheric_profile_validation_nan():
             source_type="deterministic",
             model="TestModel",
             run_time_utc=None,
-            valid_time_utc=datetime.datetime.utcnow(),
+            valid_time_utc=datetime.datetime.now(datetime.timezone.utc),
             latitude_deg=0.0,
             longitude_deg=0.0,
             member_id=None
@@ -70,7 +70,7 @@ def test_atmospheric_profile_validation_monotonic():
             source_type="deterministic",
             model="TestModel",
             run_time_utc=None,
-            valid_time_utc=datetime.datetime.utcnow(),
+            valid_time_utc=datetime.datetime.now(datetime.timezone.utc),
             latitude_deg=0.0,
             longitude_deg=0.0,
             member_id=None

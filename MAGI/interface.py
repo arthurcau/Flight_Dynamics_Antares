@@ -1,153 +1,100 @@
-import pandas as pd
-import numpy as np
+"""Validated interface between MAGI profiles and the flight-dynamics package."""
+
 from pathlib import Path
-from antares_fd.environment.atmosphere import AtmosphericProfile
+
+import numpy as np
+import pandas as pd
+
 from antares_fd.config.exceptions import ConfigurationError
+from antares_fd.environment.atmosphere import AtmosphericProfile
+from MAGI.balthasar import Balthasar
+from MAGI.casper import CasperProcessor, MagiSchema
 
 
-def _process_df_to_profile(df_nominal, elevation, latitude, longitude):
-    alt_asl = df_nominal['altitude_agl_m'].values.astype(float) + elevation
-    pressure_vals = df_nominal['pressure_pa'].values.astype(float)
-    temp_vals = df_nominal['temperature_k'].values.astype(float)
-    u_vals = df_nominal['u_east_mps'].values.astype(float)
-    v_vals = df_nominal['v_north_mps'].values.astype(float)
-    
-    model_name = df_nominal['model_name'].iloc[0] if 'model_name' in df_nominal.columns else "Unknown"
-    valid_time = df_nominal['valid_time_utc'].iloc[0] if 'valid_time_utc' in df_nominal.columns else pd.Timestamp.utcnow()
-    run_time = df_nominal['generation_time_utc'].iloc[0] if 'generation_time_utc' in df_nominal.columns else None
-    
+def _process_df_to_profile(frame, elevation, latitude, longitude):
+    MagiSchema.validate(frame)
+    accepted = {"VALID", "HYDROSTATIC_WARNING", "SYNTHETIC_SURFACE_LAYER"}
+    if not frame.quality_flag.isin(accepted).all():
+        raise ConfigurationError(f"MAGI profile rejected by quality control: {sorted(set(frame.quality_flag))}")
+    def value(column, default=None):
+        item = frame[column].iloc[0] if column in frame else default
+        return default if pd.isna(item) else item
+
+    meta = {
+        **frame.attrs,
+        "quality_flags": sorted(set(frame.quality_flag)),
+        "retrieved_at_utc": str(value("retrieved_at_utc", "unknown")),
+    }
+    for col in ("historical_reference_year", "target_date_utc", "historical_surrogate_notice"):
+        if col in frame:
+            meta[col] = str(value(col))
+
     return AtmosphericProfile(
-        altitude_asl_m=alt_asl,
-        pressure_pa=pressure_vals,
-        temperature_k=temp_vals,
-        wind_u_mps=u_vals,
-        wind_v_mps=v_vals,
-        source="MAGI",
-        source_type=df_nominal['data_source'].iloc[0] if 'data_source' in df_nominal.columns else 'ensemble',
-        model=model_name,
-        run_time_utc=run_time,
-        valid_time_utc=valid_time,
+        altitude_asl_m=frame.altitude_msl_m.to_numpy(dtype=float),
+        pressure_pa=frame.pressure_pa.to_numpy(dtype=float),
+        temperature_k=frame.temperature_k.to_numpy(dtype=float),
+        wind_u_mps=frame.u_east_mps.to_numpy(dtype=float),
+        wind_v_mps=frame.v_north_mps.to_numpy(dtype=float),
+        source=value("data_source", "unknown"),
+        source_type=value("data_type", "unknown"),
+        model=value("model_name"),
+        run_time_utc=value("generation_time_utc"),
+        valid_time_utc=value("valid_time_utc"),
         latitude_deg=latitude,
         longitude_deg=longitude,
-        member_id=df_nominal.get('ensemble_member', pd.Series(["control"])).iloc[0]
+        member_id=value("ensemble_member"),
+        specific_humidity_kg_kg=frame.specific_humidity_kg_kg.to_numpy(dtype=float),
+        metadata=meta,
     )
 
-def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=None, time_window_minutes=120, time_step_minutes=10) -> list[AtmosphericProfile]:
-    from MAGI.state_manager import StateManager
-    from MAGI.balthasar import Balthasar
-    from MAGI.casper import CasperProcessor
-    
-    magi_path = Path(__file__).resolve().parent
-    cache_dir = str(magi_path / "dados_cache")
-    
-    state_mgr = StateManager(cache_dir=cache_dir)
-    balthasar = Balthasar(cache_dir=cache_dir, elevation_msl=elevation)
-    forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str, time_window_minutes, time_step_minutes)
-    
-    if forecast_result is None or (isinstance(forecast_result, pd.DataFrame) and forecast_result.empty) or (isinstance(forecast_result, list) and len(forecast_result) == 0):
-        raise ConfigurationError("MAGI failed to generate an atmospheric ensemble (no data available for target date).")
 
-    if target_date_str:
-        target_date = pd.to_datetime(target_date_str, utc=True)
-        if isinstance(forecast_result, list):
-            for df in forecast_result:
-                df['valid_time_utc'] = target_date
-        else:
-            forecast_result['valid_time_utc'] = target_date
-
-    VERTICAL_GRID = np.arange(10, 6000 + 10, 10)
-    casper = CasperProcessor(elevation_msl=elevation, surface_scenario="OPEN_TERRAIN")
-    
-    profiles = []
-    if not is_real_ensemble:
-        df_nominal = casper.interpolate_profile(forecast_result, VERTICAL_GRID)
-        df_nominal = df_nominal.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
-        if df_nominal.empty:
-            raise ConfigurationError("MAGI generated an empty interpolated ensemble profile.")
-        profiles.append(_process_df_to_profile(df_nominal, elevation, latitude, longitude))
-    else:
-        for df in forecast_result:
-            df_interp = casper.interpolate_profile(df, VERTICAL_GRID)
-            df_interp = df_interp.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
-            if not df_interp.empty:
-                profiles.append(_process_df_to_profile(df_interp, elevation, latitude, longitude))
-                
-    if not profiles:
-        raise ConfigurationError("MAGI generated an empty atmospheric ensemble.")
-        
-    return profiles
-
-def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None) -> AtmosphericProfile:
-    """
-    Standardized interface for fetching atmospheric profiles from MAGI.
-    """
-    from MAGI.state_manager import StateManager
-    from MAGI.balthasar import Balthasar
-    from MAGI.casper import CasperProcessor
-    
-    magi_path = Path(__file__).resolve().parent
-    cache_dir = str(magi_path / "dados_cache")
-    
-    state_mgr = StateManager(cache_dir=cache_dir)
-    balthasar = Balthasar(cache_dir=cache_dir, elevation_msl=elevation)
-    forecast_result, is_real_ensemble = balthasar.fetch_operational_forecast(latitude, longitude, target_date_str)
-    
-    # If no data returned
-    if forecast_result is None or (isinstance(forecast_result, pd.DataFrame) and forecast_result.empty) or (isinstance(forecast_result, list) and len(forecast_result) == 0):
-        raise ConfigurationError("MAGI failed to generate an atmospheric profile (no data available for target date).")
-
-    if target_date_str:
-        target_date = pd.to_datetime(target_date_str, utc=True)
-        if isinstance(forecast_result, list):
-            for df in forecast_result:
-                df['valid_time_utc'] = target_date
-        else:
-            forecast_result['valid_time_utc'] = target_date
-
-    VERTICAL_GRID = np.arange(10, 6000 + 10, 10)
-    casper = CasperProcessor(elevation_msl=elevation, surface_scenario="OPEN_TERRAIN")
-    
-    if not is_real_ensemble:
-        df_nominal = casper.interpolate_profile(forecast_result, VERTICAL_GRID)
-        source_type = "deterministic_forecast"
-    else:
-        # Just return the first member for nominal requests for now
-        df_nominal = casper.interpolate_profile(forecast_result[0], VERTICAL_GRID)
-        source_type = "native_model_ensemble"
-
-    if df_nominal.empty:
-        raise ConfigurationError("MAGI generated an empty interpolated profile.")
-
-    # Drop NaNs before returning (as required by RocketPy and our validation)
-    df_nominal = df_nominal.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
-    if df_nominal.empty:
-        raise ConfigurationError("MAGI interpolated profile has no valid atmospheric values.")
-    
-    alt_asl = df_nominal['altitude_agl_m'].values.astype(float) + elevation
-    pressure_vals = df_nominal['pressure_pa'].values.astype(float)
-    temp_vals = df_nominal['temperature_k'].values.astype(float)
-    u_vals = df_nominal['u_east_mps'].values.astype(float)
-    v_vals = df_nominal['v_north_mps'].values.astype(float)
-    
-    # Get metadata
-    model_name = df_nominal['model_name'].iloc[0] if 'model_name' in df_nominal.columns else "Unknown"
-    valid_time = df_nominal['valid_time_utc'].iloc[0] if 'valid_time_utc' in df_nominal.columns else pd.Timestamp.utcnow()
-    run_time = df_nominal['generation_time_utc'].iloc[0] if 'generation_time_utc' in df_nominal.columns else None
-    
-    profile = AtmosphericProfile(
-        altitude_asl_m=alt_asl,
-        pressure_pa=pressure_vals,
-        temperature_k=temp_vals,
-        wind_u_mps=u_vals,
-        wind_v_mps=v_vals,
-        source="MAGI",
-        source_type=source_type,
-        model=model_name,
-        run_time_utc=run_time,
-        valid_time_utc=valid_time,
-        latitude_deg=latitude,
-        longitude_deg=longitude,
-        member_id=None
+def get_atmospheric_ensemble(latitude, longitude, elevation, target_date_str=None,
+                             time_window_minutes=120, time_step_minutes=10, *,
+                             cache_dir=None, surface_scenario="OPEN_TERRAIN",
+                             max_altitude_agl_m=6000, vertical_step_m=10,
+                             historical_years=None, historical_reference_year=None,
+                             model=None):
+    """Return an atmospheric ensemble (multi-year historical archive or temporal scenarios)."""
+    if max_altitude_agl_m <= 0 or vertical_step_m <= 0:
+        raise ConfigurationError("MAGI vertical extent and step must be positive")
+    cache = Path(cache_dir) if cache_dir is not None else Path(__file__).parent / "dados_cache"
+    balthasar = Balthasar(cache_dir=cache, elevation_msl=elevation, model=model)
+    raw, _ = balthasar.fetch_operational_forecast(
+        latitude, longitude, target_date_str,
+        time_window_minutes, time_step_minutes,
+        historical_years=historical_years,
+        historical_reference_year=historical_reference_year,
+        is_ensemble=True,
     )
-    
-    return profile
+    frames = raw if isinstance(raw, list) else [raw]
+    if not frames or any(frame.empty for frame in frames):
+        raise ConfigurationError("MAGI returned no complete atmospheric profiles")
+    grid = np.unique(np.r_[np.arange(0, max_altitude_agl_m, vertical_step_m), max_altitude_agl_m])
+    processor = CasperProcessor(elevation_msl=elevation, surface_scenario=surface_scenario)
+    return [_process_df_to_profile(processor.interpolate_profile(frame, grid), elevation, latitude, longitude)
+            for frame in frames]
+
+
+def get_atmospheric_profile(latitude, longitude, elevation, target_date_str=None, *,
+                            cache_dir=None, surface_scenario="OPEN_TERRAIN",
+                            max_altitude_agl_m=6000, vertical_step_m=10,
+                            historical_years=None, historical_reference_year=None,
+                            model=None, **kwargs):
+    """Return the nominal profile at the requested time (or representative historical reference year)."""
+    if max_altitude_agl_m <= 0 or vertical_step_m <= 0:
+        raise ConfigurationError("MAGI vertical extent and step must be positive")
+    cache = Path(cache_dir) if cache_dir is not None else Path(__file__).parent / "dados_cache"
+    balthasar = Balthasar(cache_dir=cache, elevation_msl=elevation, model=model)
+    raw, _ = balthasar.fetch_operational_forecast(
+        latitude, longitude, target_date_str,
+        time_window_minutes=0, time_step_minutes=10,
+        historical_years=historical_years,
+        historical_reference_year=historical_reference_year,
+        is_ensemble=False,
+    )
+    frame = raw if not isinstance(raw, list) else raw[0]
+    if frame is None or frame.empty:
+        raise ConfigurationError("MAGI returned an empty atmospheric profile")
+    grid = np.unique(np.r_[np.arange(0, max_altitude_agl_m, vertical_step_m), max_altitude_agl_m])
+    processor = CasperProcessor(elevation_msl=elevation, surface_scenario=surface_scenario)
+    return _process_df_to_profile(processor.interpolate_profile(frame, grid), elevation, latitude, longitude)

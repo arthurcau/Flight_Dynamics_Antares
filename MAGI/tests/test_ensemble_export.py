@@ -71,28 +71,22 @@ def test_rocketpy_exporter(dummy_ensemble_ds, tmp_path):
     assert out_file.exists()
     
     # Reload and check
-    ds_reloaded = xr.open_dataset(str(out_file))
-    assert "time" in ds_reloaded.coords
-    assert "pressure_level" in ds_reloaded.coords
-    assert ds_reloaded.attrs.get("title") == "MAGI Atmospheric Ensemble"
-    assert ds_reloaded["temperature"].shape == (5, 1, 6, 3, 3)
-    
-    ds_reloaded.close()
+    with xr.open_dataset(str(out_file)) as ds_reloaded:
+        assert "time" in ds_reloaded.coords
+        assert "pressure_level" in ds_reloaded.coords
+        assert ds_reloaded.attrs.get("title") == "MAGI Atmospheric Ensemble"
+        assert ds_reloaded["temperature"].shape == (5, 1, 6, 3, 3)
 
 def test_rocketpy_exporter_gefs_naming(dummy_ensemble_ds, tmp_path):
     out_file = tmp_path / "test_ensemble_gefs.nc"
     exporter = RocketPyEnsembleExporter()
     exporter.export(dummy_ensemble_ds, str(out_file), naming="gefs")
     
-    ds_reloaded = xr.open_dataset(str(out_file))
-    
-    # Check renamed dimensions/variables
-    assert "ens" in ds_reloaded.dims
-    assert "lev" in ds_reloaded.dims
-    assert "tmpprs" in ds_reloaded.variables
-    assert "hgtprs" in ds_reloaded.variables
-    
-    ds_reloaded.close()
+    with xr.open_dataset(str(out_file)) as ds_reloaded:
+        assert "ens" in ds_reloaded.dims
+        assert "lev" in ds_reloaded.dims
+        assert "tmpprs" in ds_reloaded.variables
+        assert "hgtprs" in ds_reloaded.variables
 
 try:
     import rocketpy
@@ -105,14 +99,22 @@ def test_rocketpy_integration(dummy_ensemble_ds, tmp_path):
     from rocketpy import Environment
     
     out_file = tmp_path / "rocketpy_magi.nc"
+    # RocketPy's get_interval_date_from_time_array requires at least 2 timestamps to determine step
+    t0 = pd.Timestamp("2026-08-08 12:00:00")
+    t1 = pd.Timestamp("2026-08-08 13:00:00")
+    ds_t0 = dummy_ensemble_ds.assign_coords(time=[t0])
+    ds_t1 = dummy_ensemble_ds.assign_coords(time=[t1])
+    multi_time_ds = xr.concat([ds_t0, ds_t1], dim="time")
+
     exporter = RocketPyEnsembleExporter()
-    exporter.export(dummy_ensemble_ds, str(out_file), naming="native")
+    exporter.export(multi_time_ds, str(out_file), naming="native")
     
     env = Environment(
         latitude=-22.0,
         longitude=-48.0,
         elevation=450
     )
+    env.set_date((2026, 8, 8, 12))
     
     env.set_atmospheric_model(
         type="Ensemble",

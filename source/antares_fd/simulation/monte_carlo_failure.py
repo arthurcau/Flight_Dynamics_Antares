@@ -22,22 +22,9 @@ from antares_fd.simulation.scenarios import apply_scenario, SCENARIOS, NOMINAL
 
 from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
 
-# --- Monkey Patch for RocketPy StochasticTrapezoidalFins Bug ---
-from rocketpy.rocket.aero_surface.fins.trapezoidal_fins import TrapezoidalFins
-_orig_init = TrapezoidalFins.__init__
+from antares_fd.simulation.monte_carlo_patch import _transfer_rocket_components, ProfileStochasticEnvironment, ConfiguredMonteCarlo
+from antares_fd.simulation.runner import run_flight, flight_options
 
-def _patched_init(self, *args, **kwargs):
-    if "sweep_length" in kwargs and "sweep_angle" in kwargs:
-        if kwargs["sweep_length"] is None:
-            del kwargs["sweep_length"]
-        elif kwargs["sweep_angle"] is None:
-            del kwargs["sweep_angle"]
-        else:
-            del kwargs["sweep_length"]
-    _orig_init(self, *args, **kwargs)
-
-TrapezoidalFins.__init__ = _patched_init
-# ---------------------------------------------------------------
 
 
 def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_event):
@@ -57,7 +44,7 @@ def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_ev
             members = getattr(self, "_antares_environment_members", None)
             member_indices = getattr(self, "_antares_environment_indices", None)
             if members and member_indices:
-                self.environment.obj = members[int(member_indices[sim_idx]) % len(members)]
+                self.environment.set_profile(members[int(member_indices[sim_idx]) % len(members)])
             self.environment._set_stochastic(case_seed)
             self.rocket._set_stochastic(case_seed)
             self.flight._set_stochastic(case_seed)
@@ -254,8 +241,8 @@ def execute_monte_carlo(config, project_dir):
     # stochastic wrapper still supplies the launch-site randomization.
     wind_factor_x = user_wx_std if len(env_ensemble) <= 1 else 0.0
     wind_factor_y = user_wy_std if len(env_ensemble) <= 1 else 0.0
-    stoch_env = StochasticEnvironment(
-        environment=nominal_env,
+    stoch_env = ProfileStochasticEnvironment(
+        environment=nominal_env, profiles=env_ensemble,
         wind_velocity_x_factor=(1.0, wind_factor_x),
         wind_velocity_y_factor=(1.0, wind_factor_y),
         elevation=(env_cfg.get("elevation") or {}).get("std", None)
@@ -288,32 +275,13 @@ def execute_monte_carlo(config, project_dir):
     )
     stoch_rocket.add_motor(stoch_motor, position=(rocket.motor_position, 0.0))\
 
-    from rocketpy.rocket.aero_surface import NoseCone, TrapezoidalFins, EllipticalFins, Tail
-    from rocketpy.stochastic import StochasticNoseCone, StochasticTrapezoidalFins, StochasticEllipticalFins, StochasticTail, StochasticParachute, StochasticRailButtons
-    for surface_tuple in rocket.aerodynamic_surfaces:
-        surface = surface_tuple.component
-        pos = surface_tuple.position[2]
-        if isinstance(surface, NoseCone):
-            stoch_rocket.add_nose(StochasticNoseCone(surface), position=(pos, 0.0))
-        elif isinstance(surface, TrapezoidalFins):
-            stoch_rocket.add_trapezoidal_fins(StochasticTrapezoidalFins(surface), position=(pos, 0.0))
-        elif isinstance(surface, EllipticalFins):
-            stoch_rocket.add_elliptical_fins(StochasticEllipticalFins(surface), position=(pos, 0.0))
-        elif isinstance(surface, Tail):
-            stoch_rocket.add_tail(StochasticTail(surface), position=(pos, 0.0))
-    
-    for rb_tuple in rocket.rail_buttons:
-        stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=(rb_tuple.position[2], 0.0))
-        
-    if scenario_id != "ballistic":
-        for parachute in rocket.parachutes:
-            stoch_rocket.add_parachute(StochasticParachute(parachute))\
+    _transfer_rocket_components(rocket, stoch_rocket)
 
     rail_len = (config.launch.get("rail") or {}).get("length", 5.2)
     inc = (config.launch.get("rail") or {}).get("inclination_deg", 85.0)
     hdg = (config.launch.get("rail") or {}).get("heading_deg", 0.0)
 
-    flight = Flight(rocket, nominal_env, rail_length=rail_len, inclination=inc, heading=hdg)
+    flight = run_flight(rocket, nominal_env, config.launch, config.simulation)
     flt_cfg = mc_cfg.get("flight") or {}
 
     stoch_flight = StochasticFlight(
@@ -324,7 +292,7 @@ def execute_monte_carlo(config, project_dir):
     
     filename = str(results_dir / "mc_sim")
     
-    mc = MonteCarlo(
+    mc = ConfiguredMonteCarlo(
         filename=filename,
         environment=stoch_env,
         rocket=stoch_rocket,

@@ -44,6 +44,11 @@ schema_version: "1.0"
 
 recovery:
 
+  # Migrated from the previous canonical scenario. Verify against recovery tests.
+  reefing:
+    cd_s_fraction: 0.15
+    source: legacy_scenario_assumption_unvalidated
+
   enabled: true
 
 

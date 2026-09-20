@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import datetime
 from antares_fd.config.exceptions import ConfigurationError
@@ -20,6 +20,8 @@ class AtmosphericProfile:
     latitude_deg: float
     longitude_deg: float
     member_id: Optional[str]
+    specific_humidity_kg_kg: Optional[np.ndarray] = None
+    metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
         # Validate lengths
@@ -28,6 +30,7 @@ class AtmosphericProfile:
             raise ConfigurationError("Atmospheric profile must have at least 2 altitude levels.")
         
         for name, arr in [
+            ("altitude_asl_m", self.altitude_asl_m),
             ("pressure_pa", self.pressure_pa),
             ("temperature_k", self.temperature_k),
             ("wind_u_mps", self.wind_u_mps),
@@ -49,4 +52,9 @@ class AtmosphericProfile:
         
         if np.any(self.temperature_k <= 0):
             raise ConfigurationError("Temperature array contains non-positive values.")
-
+        if np.any(np.diff(self.pressure_pa) >= 0):
+            raise ConfigurationError("Pressure must decrease strictly with altitude.")
+        if self.specific_humidity_kg_kg is not None:
+            q = np.asarray(self.specific_humidity_kg_kg, dtype=float)
+            if q.shape != (n,) or not np.isfinite(q).all() or np.any((q < 0) | (q >= 1)):
+                raise ConfigurationError("Specific humidity requires one finite value in [0, 1) per level")

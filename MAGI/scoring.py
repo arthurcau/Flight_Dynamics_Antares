@@ -1,113 +1,199 @@
+"""
+Exploratory atmospheric favorability score for aerospace and flight dynamics operations.
+
+WARNING: This module provides atmospheric comparison and diagnostic ranking only.
+It does NOT constitute launch authorization.
+"""
+
+from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
+import pandas as pd
+
+try:
+    from MAGI.state_manager import MagiState
+except ImportError:
+    from state_manager import MagiState
+
 
 class AtmosphericScoring:
-    ANALYSIS_TOP_AGL_M = 6000
+    """
+    Computes an exploratory atmospheric favorability score (0 to 100) for launch operations.
     
+    The score evaluates:
+    1. Wind speed profile against historical local percentiles (P50, P90, P99) [up to 35 pts]
+    2. Wind shear profile against historical local percentiles [up to 25 pts]
+    3. Forecast ensemble spread / uncertainty (P90 - P10) [up to 20 pts]
+    4. Weather model score & data quality score [up to 20 pts]
+    
+    Vertical profiles are evaluated level-by-level with a composite formula:
+    - 50% weight on the column-averaged profile (weighted towards the surface layer).
+    - 50% weight on the critical worst-layer condition (weakest-link principle for rocketry:
+      e.g., surface rail exit or transonic shear peak).
+    """
+
+    ANALYSIS_TOP_AGL_M = 6000
+    DEFAULT_CALIBRATION = {"spread_limits_mps": [2.0, 5.0, 10.0]}
+
     @staticmethod
-    def calculate_score(df_ensemble, df_stats, z_grid):
+    def calculate_score(
+        df_ensemble: List[pd.DataFrame],
+        df_stats: pd.DataFrame,
+        z_grid: Union[List[float], np.ndarray],
+        *,
+        operational_state: Optional[str] = None,
+        calibration: Optional[dict] = None,
+        weather_score: Optional[float] = None,
+        data_quality_score: Optional[float] = None
+    ) -> Tuple[Optional[float], str]:
         """
-        Calculates an atmospheric favourability score based on wind magnitude, shear,
-        and ensemble spread compared to historical percentiles.
-        
-        df_ensemble: list of dataframes for each member
-        df_stats: historical stats dataframe
+        Calculate the atmospheric favorability index.
+
+        Parameters
+        ----------
+        df_ensemble : list of pd.DataFrame
+            List of forecast profile DataFrames (must include nominal and/or ensemble members).
+            Each DataFrame must contain 'altitude_agl_m', 'wind_speed_mps', 'wind_shear_s_1'.
+        df_stats : pd.DataFrame
+            Historical climatology statistics indexed by or containing 'altitude_agl_m'
+            with median, p90, and p99 columns for wind speed and wind shear.
+        z_grid : array-like
+            Target vertical altitude grid AGL [m].
+        operational_state : str, optional
+            Operational pipeline state from StateManager.
+        calibration : dict, optional
+            Calibration dict containing 'spread_limits_mps' (3 strictly increasing floats).
+        weather_score : float, optional
+            Precipitation / convective weather quality input (0..10, default 5.0).
+        data_quality_score : float, optional
+            Data provenance / sensor quality input (0..10, default 5.0).
+
+        Returns
+        -------
+        score : float or None
+            Composite favorability score from 0.0 to 100.0 (None if unavailable).
+        score_class : str
+            Diagnostic classification string ("EXPLORATORY_ATMOSPHERIC_INDEX" or
+            "ATMOSPHERIC_SCORE_UNAVAILABLE").
         """
-        if not df_ensemble or df_stats.empty:
-            return None, "ATMOSPHERIC_SCORE_UNAVAILABLE"
-            
-        # Limit analysis to TOP_AGL
-        mask = z_grid <= AtmosphericScoring.ANALYSIS_TOP_AGL_M
-        
-        # We need the maximum wind in the ensemble up to TOP_AGL
-        max_wind_env = 0
-        max_shear_env = 0
-        spread_wind_max = 0
-        
-        for df in df_ensemble:
-            w_spd = df['wind_speed_mps'].values[mask]
-            shear = df['wind_shear_s_1'].values[mask]
-            
-            # handle NaNs
-            w_spd = w_spd[~np.isnan(w_spd)]
-            shear = shear[~np.isnan(shear)]
-            
-            if len(w_spd) > 0:
-                max_wind_env = max(max_wind_env, np.max(w_spd))
-            if len(shear) > 0:
-                max_shear_env = max(max_shear_env, np.max(shear))
-                
-        # To calculate spread, we need p10 and p90 of the ensemble at each level
-        if len(df_ensemble) > 1:
-            all_winds = np.array([df['wind_speed_mps'].values[mask] for df in df_ensemble])
-            p90_env = np.nanpercentile(all_winds, 90, axis=0)
-            p10_env = np.nanpercentile(all_winds, 10, axis=0)
-            spread_wind_max = np.nanmax(p90_env - p10_env)
-            
-        # Get historical percentiles for wind
-        hist_mask = df_stats['altitude_agl_m'].values <= AtmosphericScoring.ANALYSIS_TOP_AGL_M
-        hist_p50_wind = df_stats['wind_speed_mps_median'].values[hist_mask]
-        hist_p90_wind = df_stats['wind_speed_mps_p90'].values[hist_mask]
-        # Approximation: if we don't have p99, we'll scale p90
-        
-        max_hist_p50 = np.nanmax(hist_p50_wind) if len(hist_p50_wind) > 0 else 10.0
-        max_hist_p90 = np.nanmax(hist_p90_wind) if len(hist_p90_wind) > 0 else 20.0
-        max_hist_p99 = max_hist_p90 * 1.5
-        
-        # Wind Magnitude Score (35%)
-        if max_wind_env <= max_hist_p50:
-            score_wind = 35.0
-        elif max_wind_env <= max_hist_p90:
-            ratio = (max_wind_env - max_hist_p50) / (max_hist_p90 - max_hist_p50)
-            score_wind = 35.0 - (ratio * 15.0) # drops to 20
-        elif max_wind_env <= max_hist_p99:
-            ratio = (max_wind_env - max_hist_p90) / (max_hist_p99 - max_hist_p90)
-            score_wind = 20.0 - (ratio * 20.0) # drops to 0
+        unavailable = (None, "ATMOSPHERIC_SCORE_UNAVAILABLE")
+
+        if calibration is None:
+            calibration = AtmosphericScoring.DEFAULT_CALIBRATION
+        if weather_score is None:
+            weather_score = 5.0
+        if data_quality_score is None:
+            data_quality_score = 5.0
+        if operational_state is None:
+            operational_state = MagiState.CURRENT_FORECAST
+
+        allowed_states = {MagiState.CURRENT_FORECAST, MagiState.CACHED_FORECAST, MagiState.DEGRADED_DATA}
+        if (
+            len(df_ensemble or []) < 1
+            or df_stats is None
+            or df_stats.empty
+            or not calibration
+            or operational_state not in allowed_states
+            or weather_score is None
+            or data_quality_score is None
+        ):
+            return unavailable
+
+        if not all(np.isfinite(value) and 0 <= value <= 10 for value in (weather_score, data_quality_score)):
+            return unavailable
+
+        z = np.asarray(z_grid, dtype=float)
+        mask = (z >= 0) & (z <= AtmosphericScoring.ANALYSIS_TOP_AGL_M)
+        if not mask.any():
+            return unavailable
+
+        z_eval = z[mask]
+        winds, shears = [], []
+        accepted_flags = {
+            "VALID",
+            "SYNTHETIC_MODEL",
+            "SYNTHETIC_SURFACE_LAYER",
+            "API_PROFILE",
+            "HYDROSTATIC_WARNING",
+        }
+
+        for frame in df_ensemble:
+            if len(frame) != len(z) or not np.array_equal(frame.altitude_agl_m.to_numpy(), z):
+                return unavailable
+            if "quality_flag" in frame and not frame.loc[mask, "quality_flag"].isin(accepted_flags).all():
+                return unavailable
+            wind = frame.wind_speed_mps.to_numpy(dtype=float)[mask]
+            shear = frame.wind_shear_s_1.to_numpy(dtype=float)[mask]
+            if not np.isfinite(wind).all() or not np.isfinite(shear).all():
+                return unavailable
+            winds.append(wind)
+            shears.append(shear)
+
+        winds_arr = np.asarray(winds)   # shape: (num_members, n_levels)
+        shears_arr = np.asarray(shears) # shape: (num_members, n_levels)
+
+        # Reindex historical stats to evaluation grid
+        if "altitude_agl_m" in df_stats.columns:
+            stats = df_stats.set_index("altitude_agl_m").reindex(z_eval)
         else:
-            score_wind = 0.0
-            
-        # Wind Shear Score (25%)
-        # Just hardcode some reasonable limits for now until calibrated
-        shear_p50 = 0.015
-        shear_p90 = 0.030
-        shear_p99 = 0.050
-        
-        if max_shear_env <= shear_p50:
-            score_shear = 25.0
-        elif max_shear_env <= shear_p90:
-            ratio = (max_shear_env - shear_p50) / (shear_p90 - shear_p50)
-            score_shear = 25.0 - (ratio * 10.0) # drops to 15
-        elif max_shear_env <= shear_p99:
-            ratio = (max_shear_env - shear_p90) / (shear_p99 - shear_p90)
-            score_shear = 15.0 - (ratio * 15.0) # drops to 0
+            stats = df_stats.reindex(z_eval)
+
+        # Baseline weather and sensor quality score (0..20 pts)
+        score = float(weather_score + data_quality_score)
+
+        # Height weighting: w(z) emphasizes surface rail exit (0-500m) while maintaining
+        # awareness of transonic/max-Q and upper troposphere
+        weights = 0.5 + 0.5 * np.exp(-z_eval / 1000.0)
+        weight_sum = np.sum(weights)
+
+        # Evaluate Wind Speed and Wind Shear
+        for var_name, data_arr, max_pts, mid_pts in (
+            ("wind_speed_mps", winds_arr, 35.0, 20.0),
+            ("wind_shear_s_1", shears_arr, 25.0, 15.0),
+        ):
+            columns = [f"{var_name}_{stat}" for stat in ("median", "p90", "p99")]
+            if not set(columns) <= set(stats.columns):
+                return unavailable
+
+            values = stats[columns].to_numpy(dtype=float)  # shape: (n_levels, 3)
+            if not np.isfinite(values).all():
+                return unavailable
+
+            # Verify that historical thresholds are strictly increasing at all levels
+            if np.any(np.diff(values, axis=1) <= 0):
+                return unavailable
+
+            # Conservative representative profile: 75th percentile of the ensemble
+            # (or mean/nominal if single member)
+            if data_arr.shape[0] > 1:
+                cur_profile = np.percentile(data_arr, 75, axis=0)
+            else:
+                cur_profile = data_arr[0]
+
+            # Level-by-level evaluation
+            level_scores = np.empty(len(z_eval), dtype=float)
+            for k in range(len(z_eval)):
+                thresh_k = values[k]
+                level_scores[k] = float(np.interp(cur_profile[k], thresh_k, (max_pts, mid_pts, 0.0)))
+
+            # Composite rocketry score: 50% weighted column average + 50% critical worst layer
+            weighted_avg = float(np.sum(level_scores * weights) / weight_sum)
+            worst_layer = float(np.min(level_scores))
+            score += 0.5 * weighted_avg + 0.5 * worst_layer
+
+        # Evaluate Ensemble Spread / Uncertainty (0..20 pts)
+        limits = np.asarray(calibration.get("spread_limits_mps", []), dtype=float)
+        if limits.shape != (3,) or not np.isfinite(limits).all() or np.any(np.diff(limits) <= 0):
+            return unavailable
+
+        if winds_arr.shape[0] > 1:
+            # Spread across ensemble: P90 - P10 along altitude
+            spread_profile = np.percentile(winds_arr, 90, axis=0) - np.percentile(winds_arr, 10, axis=0)
+            weighted_spread = float(np.sum(spread_profile * weights) / weight_sum)
         else:
-            score_shear = 0.0
-            
-        # Ensemble Spread Score (20%)
-        # Spread of 5 m/s is large.
-        if spread_wind_max <= 1.0:
-            score_spread = 20.0
-        elif spread_wind_max <= 5.0:
-            score_spread = 20.0 - ((spread_wind_max - 1.0)/4.0 * 15.0)
-        else:
-            score_spread = 0.0
-            
-        # Weather Activity Score (10%)
-        score_weather = 10.0 # Assumed clear for now without CAPE/precip data
-        
-        # Data Quality Score (10%)
-        score_quality = 10.0 # Will be influenced by operational_state in main logic
-        
-        total_score = score_wind + score_shear + score_spread + score_weather + score_quality
-        
-        if total_score >= 80:
-            classification = "Highly Favourable"
-        elif total_score >= 60:
-            classification = "Favourable"
-        elif total_score >= 40:
-            classification = "Moderate"
-        elif total_score >= 20:
-            classification = "Unfavourable"
-        else:
-            classification = "Highly Atypical"
-            
-        return total_score, classification
+            weighted_spread = 0.0
+
+        spread_points = float(np.interp(weighted_spread, limits, (20.0, 5.0, 0.0)))
+        score += spread_points
+
+        score = float(np.clip(score, 0.0, 100.0))
+        return score, "EXPLORATORY_ATMOSPHERIC_INDEX"

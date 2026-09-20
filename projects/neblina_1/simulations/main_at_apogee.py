@@ -1,31 +1,17 @@
-"""
-ANTARES FLIGHT DYNAMICS
-Main at Apogee Flight Simulation
-"""
-import sys
+"""Run the canonical main_at_apogee scenario using this project's YAML data."""
 from pathlib import Path
+import sys
 
-# Ensures the core 'Source' package can be imported
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-SOURCE_DIR = PROJECT_ROOT / "source"
-if str(SOURCE_DIR) not in sys.path:
-    sys.path.insert(0, str(SOURCE_DIR))
-    sys.path.insert(0, str(PROJECT_ROOT))
-
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+ROOT = PROJECT_DIR.parents[1]
+sys.path.insert(0, str(ROOT / "source"))
 from antares_fd.config import load_project_config
 from antares_fd.simulation import execute_scenario
 
+
 def main():
-    PROJECT_DIR = Path(__file__).resolve().parents[1]
-    
-    # 1. Load configuration
-    config = load_project_config(PROJECT_DIR)
-    
-    # 2. Execute the canonical scenario override without mutating nominal
-    # configuration shared by other deterministic or stochastic cases.
-    flight = execute_scenario(config, PROJECT_DIR, scenario_id="main_at_apogee")
-    
-    return flight
+    return execute_scenario(load_project_config(PROJECT_DIR), PROJECT_DIR, scenario_id="main_at_apogee")
+
 
 if __name__ == "__main__":
     main()

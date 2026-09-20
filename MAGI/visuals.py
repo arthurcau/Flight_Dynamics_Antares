@@ -773,7 +773,7 @@ class CasperVisualsV3:
                         radar_host = radar_json.get('host', 'https://tilecache.rainviewer.com')
                         radar_path = radar_json['radar']['past'][-1]['path']
                         timestamp = radar_json['radar']['past'][-1]['time']
-                        radar_ts_str = datetime.datetime.utcfromtimestamp(timestamp).strftime("%H:%M UTC")
+                        radar_ts_str = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).strftime("%H:%M UTC")
                         has_radar = True
                         for ii in range(-1, 2):
                             for jj in range(-1, 2):

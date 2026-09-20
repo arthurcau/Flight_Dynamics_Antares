@@ -13,22 +13,9 @@ from antares_fd.simulation.monte_carlo_storage import CampaignManager
 
 from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
 
-# --- Monkey Patch for RocketPy StochasticTrapezoidalFins Bug ---
-from rocketpy.rocket.aero_surface.fins.trapezoidal_fins import TrapezoidalFins
-_orig_init = TrapezoidalFins.__init__
+from antares_fd.simulation.monte_carlo_patch import _transfer_rocket_components, ProfileStochasticEnvironment, ConfiguredMonteCarlo
+from antares_fd.simulation.runner import run_flight, flight_options
 
-def _patched_init(self, *args, **kwargs):
-    if "sweep_length" in kwargs and "sweep_angle" in kwargs:
-        if kwargs["sweep_length"] is None:
-            del kwargs["sweep_length"]
-        elif kwargs["sweep_angle"] is None:
-            del kwargs["sweep_angle"]
-        else:
-            del kwargs["sweep_length"]
-    _orig_init(self, *args, **kwargs)
-
-TrapezoidalFins.__init__ = _patched_init
-# ---------------------------------------------------------------
 
 def execute_monte_carlo(config, project_dir):
     """
@@ -43,25 +30,9 @@ def execute_monte_carlo(config, project_dir):
     num_sims = mc_cfg.get("num_simulations", 10)
     seed = mc_cfg.get("random_seed", 42)
     scenario_id = os.environ.get("ANTARES_MC_SCENARIO", "nominal")
-    if scenario_id == "ballistic":
-        config.recovery["enabled"] = False
-    elif scenario_id == "main_at_apogee":
-        for device in config.recovery.get("devices", []):
-            if device.get("id") == "drogue":
-                device["enabled"] = False
-            elif device.get("id") == "main":
-                device["trigger"] = {"type": "apogee"}
-    elif scenario_id == "only_reefing":
-        main_cd_s = None
-        for device in config.recovery.get("devices", []):
-            if device.get("id") == "main":
-                main_cd_s = device.get("aerodynamics", {}).get("cd_s")
-        for device in config.recovery.get("devices", []):
-            if device.get("id") == "drogue" and main_cd_s is not None:
-                device["aerodynamics"]["cd_s"] = main_cd_s * 0.15
-    if scenario_id not in {"nominal", "main_at_apogee", "only_reefing", "ballistic"}:
-        raise ConfigurationError(f"Unsupported stochastic scenario: {scenario_id}")
-    
+    from antares_fd.simulation.scenarios import apply_scenario
+    config = apply_scenario(config, scenario_id)
+
     # Force seed reproducibility
     np.random.seed(seed)
     random.seed(seed)
@@ -73,37 +44,14 @@ def execute_monte_carlo(config, project_dir):
     nominal_env = build_environment(config.environment, config.launch)
     env_ensemble = build_environment_ensemble(config.environment, config.launch)
     
-    # Motor & Vehicle built exactly like a nominal run
-    nominal_motor = build_motor(config.motor, project_dir)
-    nominal_rocket = build_vehicle(config.vehicle, nominal_motor, project_dir)
-    add_recovery_system(nominal_rocket, config.recovery)
-    
-    # --- 3. Map Config to RocketPy Stochastics ---
-    # We use the list of environments in `ensemble_member` if there are multiple.
-    # Otherwise we just use the nominal_env and random noise.
-    # Compute std dev from MAGI ensemble
-    wind_x_std = 0.0
-    wind_y_std = 0.0
-    if len(env_ensemble) > 1:
-        # get max wind speed to scale
-        wx_list = []
-        wy_list = []
-        for e in env_ensemble:
-            wx_list.append(e.wind_velocity_x(1000))
-            wy_list.append(e.wind_velocity_y(1000))
-        wind_x_std = float(np.std(wx_list)) if wx_list else 1.0
-        wind_y_std = float(np.std(wy_list)) if wy_list else 1.0
-        print(f"[MAGI-Stochastic] Computed Ensemble variance: std_x={wind_x_std:.2f}, std_y={wind_y_std:.2f}")
-
-    # Fallback to config if ensemble is disabled
     env_cfg = mc_cfg.get("environment") or {}
     user_wx_std = (env_cfg.get("wind_velocity_x") or {}).get("factor_std", 0.0)
     user_wy_std = (env_cfg.get("wind_velocity_y") or {}).get("factor_std", 0.0)
     
-    stoch_env = StochasticEnvironment(
-        environment=nominal_env,
-        wind_velocity_x_factor=(1.0, (wind_x_std/3.0) if wind_x_std > 0 else user_wx_std),
-        wind_velocity_y_factor=(1.0, (wind_y_std/3.0) if wind_y_std > 0 else user_wy_std),
+    stoch_env = ProfileStochasticEnvironment(
+        environment=nominal_env, profiles=env_ensemble,
+        wind_velocity_x_factor=(1.0, user_wx_std),
+        wind_velocity_y_factor=(1.0, user_wy_std),
         elevation=(env_cfg.get("elevation") or {}).get("std", None)
     )
     # 2. Motor
@@ -134,32 +82,13 @@ def execute_monte_carlo(config, project_dir):
     stoch_rocket.add_motor(stoch_motor, position=(rocket.motor_position, 0.0))
 
     # Transfer aero surfaces and parachutes to stochastic rocket
-    from rocketpy.rocket.aero_surface import NoseCone, TrapezoidalFins, EllipticalFins, Tail
-    from rocketpy.stochastic import StochasticNoseCone, StochasticTrapezoidalFins, StochasticEllipticalFins, StochasticTail, StochasticParachute, StochasticRailButtons
-    for surface_tuple in rocket.aerodynamic_surfaces:
-        surface = surface_tuple.component
-        pos = surface_tuple.position[2]
-        if isinstance(surface, NoseCone):
-            stoch_rocket.add_nose(StochasticNoseCone(surface), position=(pos, 0.0))
-        elif isinstance(surface, TrapezoidalFins):
-            stoch_rocket.add_trapezoidal_fins(StochasticTrapezoidalFins(surface), position=(pos, 0.0))
-        elif isinstance(surface, EllipticalFins):
-            stoch_rocket.add_elliptical_fins(StochasticEllipticalFins(surface), position=(pos, 0.0))
-        elif isinstance(surface, Tail):
-            stoch_rocket.add_tail(StochasticTail(surface), position=(pos, 0.0))
-    
-    for rb_tuple in rocket.rail_buttons:
-        stoch_rocket.set_rail_buttons(StochasticRailButtons(rb_tuple.component), lower_button_position=(rb_tuple.position[2], 0.0))
-        
-    for parachute in rocket.parachutes:
-        stoch_rocket.add_parachute(StochasticParachute(parachute))
-
+    _transfer_rocket_components(rocket, stoch_rocket)
 
     rail_len = (config.launch.get("rail") or {}).get("length", 5.2)
     inc = (config.launch.get("rail") or {}).get("inclination_deg", 85.0)
     hdg = (config.launch.get("rail") or {}).get("heading_deg", 0.0)
 
-    flight = Flight(rocket, nominal_env, rail_length=rail_len, inclination=inc, heading=hdg)
+    flight = run_flight(rocket, nominal_env, config.launch, config.simulation)
     flt_cfg = mc_cfg.get("flight") or {}
 
     stoch_flight = StochasticFlight(
@@ -188,7 +117,7 @@ def execute_monte_carlo(config, project_dir):
     
     # 6. Run Monte Carlo
 
-    mc = MonteCarlo(
+    mc = ConfiguredMonteCarlo(
         filename=filename,
         environment=stoch_env,
         rocket=stoch_rocket,
@@ -302,7 +231,9 @@ def execute_monte_carlo(config, project_dir):
         try:
             from antares_fd.reporting import FlightDynamicsReport
             report = FlightDynamicsReport(flight=flight, config=config, project_dir=project_dir, mc_results_dir=results_dir, run_id=run_id)
-            report.generate()
+            pdf_path = results_dir / "flight_dynamics_report.pdf"
+            report.generate(pdf_path)
+            print(f"[Report] Engineering PDF report generated: {pdf_path}")
         except Exception as e:
             print(f"[Report] Failed to generate engineering PDF report: {e}")
 

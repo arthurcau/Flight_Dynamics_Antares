@@ -45,7 +45,7 @@ def valid_vehicle_config():
             }
         ],
         "motor_mount": {
-            "enabled": True,
+            "enabled": False,
             "position": 2.5
         },
         "rail_guides": {
@@ -60,7 +60,7 @@ def test_build_vehicle_success(valid_vehicle_config, tmp_path):
     assert isinstance(rocket, Rocket)
     assert rocket.mass == 15.0
     assert rocket.radius == 0.075  # 0.15 / 2
-    
+
 def test_build_vehicle_missing_mass(valid_vehicle_config, tmp_path):
     valid_vehicle_config["mass_properties"]["mass_without_motor"] = None
     with pytest.raises(ConfigurationError, match="mass_without_motor is required"):

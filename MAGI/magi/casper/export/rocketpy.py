@@ -85,13 +85,12 @@ class RocketPyEnsembleExporter:
         for var in ds_out.data_vars:
             encoding[var] = {"zlib": True, "complevel": self.config.get("compression_level", 4)}
 
-        # Setting proper units for CF time encoding to avoid the '6 minutes' or similar bugs
-        # when read by other tools (like netCDF4 in RocketPy)
+        # Setting proper units for CF time encoding to avoid rounding or interpretation errors
         if "time" in ds_out.coords:
             encoding["time"] = {
                 "units": "hours since 1970-01-01 00:00:00",
                 "calendar": "proleptic_gregorian",
-                "dtype": "float64" # Ensuring it is a double-precision float to avoid rounding
+                "dtype": "float64"
             }
 
         ds_out.to_netcdf(filename, encoding=encoding)
@@ -105,19 +104,15 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     if not ensemble:
         raise ValueError("No ensemble members provided.")
         
-    # Standardize and extract single timestamp logic for generating evolution
     df0 = ensemble[0]
     df0 = df0.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
     
     if 'valid_time_utc' not in df0.columns:
         raise ValueError("Missing valid_time_utc in ensemble members.")
     
-    # We take the base time from the first member
     base_time = pd.to_datetime(df0['valid_time_utc'].iloc[0]).tz_localize(None)
     
-    # Generate continuous time axis
     num_timestamps = int(round(horizon_hours / timestep_hours)) + 1
-    # Use pd.Timedelta to support float values for timestep_hours (e.g., 30 seconds = 30/3600 hours)
     step_delta = pd.Timedelta(hours=timestep_hours)
     time_array = pd.date_range(start=base_time, periods=num_timestamps, freq=step_delta)
     
@@ -127,11 +122,9 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     num_members = len(ensemble)
     nt = len(time_array)
     
-    # Center lat/lon defaults if not present
     center_lat = df0['latitude'].iloc[0] if 'latitude' in df0.columns else -21.895
     center_lon = df0['longitude'].iloc[0] if 'longitude' in df0.columns else -48.966
     
-    # Grid de pelo menos 10km de raio (~0.1 graus = 11.1km)
     delta_deg = 0.1
     lat_array = np.array([center_lat - delta_deg, center_lat, center_lat + delta_deg])
     lon_array = np.array([center_lon - delta_deg, center_lon, center_lon + delta_deg])
@@ -141,7 +134,6 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     
     shape = (num_members, nt, nz, ny, nx)
     
-    # Preallocate numpy arrays
     temp_arr = np.zeros(shape)
     hgt_arr = np.zeros(shape)
     u_arr = np.zeros(shape)
@@ -158,11 +150,11 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
         else:
             z_prof = df_valid['altitude_agl_m'].values
             
-        for t_idx in range(nt):
-            temp_arr[i, t_idx, :, :, :] = t_prof[:, None, None]
-            u_arr[i, t_idx, :, :, :] = u_prof[:, None, None]
-            v_arr[i, t_idx, :, :, :] = v_prof[:, None, None]
-            hgt_arr[i, t_idx, :, :, :] = z_prof[:, None, None]
+        # Fast vectorized broadcasting across time and spatial coordinates
+        temp_arr[i, :, :, :, :] = t_prof[None, :, None, None]
+        u_arr[i, :, :, :, :] = u_prof[None, :, None, None]
+        v_arr[i, :, :, :, :] = v_prof[None, :, None, None]
+        hgt_arr[i, :, :, :, :] = z_prof[None, :, None, None]
             
     ds = xr.Dataset(
         coords={
@@ -183,7 +175,6 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     ds["u_wind"] = (("member", "time", "pressure_level", "latitude", "longitude"), u_arr)
     ds["v_wind"] = (("member", "time", "pressure_level", "latitude", "longitude"), v_arr)
             
-    # Add units
     ds["temperature"].attrs.update({"units": "K"})
     ds["geopotential_height"].attrs.update({"units": "m"})
     ds["u_wind"].attrs.update({"units": "m/s"})
@@ -197,29 +188,23 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     exporter = RocketPyEnsembleExporter()
     exported_file = exporter.export(ds, output)
     
-    # 8. reabrir o arquivo e 9. validar novamente
-    ds_reopen = xr.open_dataset(exported_file)
-    t_vals = ds_reopen.time.values
-    
-    if len(t_vals) < 2:
-        if horizon_hours > 0:
-            raise ValueError(f"Expected multiple timestamps, got {len(t_vals)}")
-    else:
-        # Check total duration in nanoseconds
-        # t_vals is datetime64[ns], so subtracting them gives timedelta64[ns].
-        # .astype('timedelta64[ns]') ensures the unit is ns before extracting the int value.
-        total_duration_ns = int(np.timedelta64(t_vals[-1] - t_vals[0], 'ns').astype('timedelta64[ns]').astype(int))
-        expected_duration_ns = pd.Timedelta(hours=horizon_hours).value
+    with xr.open_dataset(exported_file) as ds_reopen:
+        t_vals = ds_reopen.time.values
         
-        # We allow a small float error tolerance by comparing nanoseconds
-        if abs(total_duration_ns - expected_duration_ns) > 1e6: # 1 ms tolerance
-            raise ValueError(f"Round-trip time validation failed. Expected {horizon_hours}h duration, got {total_duration_ns} ns")
+        if len(t_vals) < 2:
+            if horizon_hours > 0:
+                raise ValueError(f"Expected multiple timestamps, got {len(t_vals)}")
+        else:
+            total_duration_ns = int(np.timedelta64(t_vals[-1] - t_vals[0], 'ns').astype('timedelta64[ns]').astype(int))
+            expected_duration_ns = pd.Timedelta(hours=horizon_hours).value
             
-        # Check step size
-        step_ns = int(np.timedelta64(t_vals[1] - t_vals[0], 'ns').astype('timedelta64[ns]').astype(int))
-        expected_step_ns = pd.Timedelta(hours=timestep_hours).value
-        if abs(step_ns - expected_step_ns) > 1e6:
-            raise ValueError(f"Round-trip time step validation failed. Expected {timestep_hours}h, got {step_ns} ns")
+            if abs(total_duration_ns - expected_duration_ns) > 1e6:
+                raise ValueError(f"Round-trip time validation failed. Expected {horizon_hours}h duration, got {total_duration_ns} ns")
+                
+            step_ns = int(np.timedelta64(t_vals[1] - t_vals[0], 'ns').astype('timedelta64[ns]').astype(int))
+            expected_step_ns = pd.Timedelta(hours=timestep_hours).value
+            if abs(step_ns - expected_step_ns) > 1e6:
+                raise ValueError(f"Round-trip time step validation failed. Expected {timestep_hours}h, got {step_ns} ns")
 
     return exported_file
 

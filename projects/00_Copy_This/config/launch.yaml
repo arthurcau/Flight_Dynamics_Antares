@@ -163,7 +163,7 @@ launch:
 
   datetime:
 
-    date: "2027-09-03"
+    date: "2026-09-03"
     # YYYY-MM-DD
 
     time: "14:30:00"

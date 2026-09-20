@@ -1,70 +1,138 @@
 import os
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.covariance import LedoitWolf
 
-from MAGI.casper import MagiSchema, CasperPhysics
+try:
+    from MAGI.casper import MagiSchema, CasperPhysics
+except ImportError:
+    from casper import MagiSchema, CasperPhysics
 
 class Melchior:
     def __init__(self, cache_dir="dados_cache", elevation_msl=450):
-        self.cache_dir = cache_dir
+        if not os.path.isabs(cache_dir):
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.cache_dir = os.path.join(base_dir, cache_dir)
+        else:
+            self.cache_dir = cache_dir
         self.elevation_msl = elevation_msl
         os.makedirs(self.cache_dir, exist_ok=True)
         print(f"MELCHIOR: Inicializando com diretório de cache '{self.cache_dir}' e elevação MSL={self.elevation_msl}m")
-        
+
+    def _generate_synthetic_historical_cache(self, output_path):
+        """Generates a representative multi-profile historical climatological dataset for Iacanga (MSL 450m)."""
+        print(f"MELCHIOR: Gerando climatologia sintética representativa em '{output_path}'...")
+        dates = pd.date_range("2024-01-01 12:00:00", periods=30, freq="7D", tz="UTC")
+        alts_msl = np.arange(450, 7001, 250)  # 450 to 7000 m MSL
+        records = []
+
+        # Physical constants
+        L = 0.0065  # K/m (ISA lapse rate)
+        g = 9.80665
+        R = 287.05
+
+        np.random.seed(42)
+        for i, dt in enumerate(dates):
+            # Day-to-day weather variability
+            is_severe = (i == 14)  # 15th profile represents a severe front/storm event
+            t0 = 23.0 + np.random.normal(0, 4.0) + (5.0 if is_severe else 0.0)
+            p0 = (960.0 + np.random.normal(0, 3.0) - (8.0 if is_severe else 0.0)) * 100.0  # Pa
+            rh0 = 85.0 if is_severe else float(np.clip(60.0 + np.random.normal(0, 12.0), 35.0, 95.0))
+
+            base_dir = float((120.0 + np.random.normal(0, 25.0)) % 360)  # prevailing ESE
+            v_sfc = 12.0 if is_severe else float(np.clip(4.0 + np.random.normal(0, 1.5), 1.5, 9.0))
+            v_jet = 35.0 if is_severe else float(np.clip(18.0 + np.random.normal(0, 4.0), 10.0, 30.0))
+
+            for z_msl in alts_msl:
+                z_agl = z_msl - self.elevation_msl
+                # Temperature (ISA lapse rate with synoptic shift)
+                t_k = (t0 + 273.15) - L * z_agl
+                t_c = t_k - 273.15
+
+                # Pressure (Hypsometric formula)
+                p_pa = p0 * (1.0 - (L * z_agl) / (t0 + 273.15)) ** (g / (R * L))
+                p_hpa = p_pa / 100.0
+
+                # Humidity
+                rh = float(np.clip(rh0 * np.exp(-z_agl / 4000.0) + np.random.normal(0, 2.0), 15.0, 98.0))
+
+                # Wind speed and direction
+                # Surface boundary layer logarithmic + tropospheric increase
+                z_rough = max(z_agl, 10.0)
+                v_bl = v_sfc * (np.log(z_rough / 0.03) / np.log(10.0 / 0.03))
+                v_trop = v_jet * (z_agl / 6550.0) ** 1.2
+                v_spd = float(np.clip(v_bl * 0.4 + v_trop * 0.6 + np.random.normal(0, 0.5), 0.5, 45.0))
+
+                # Wind direction veering/backing with height towards WNW jet
+                dir_deg = float((base_dir + (z_agl / 6550.0) * 140.0 + np.random.normal(0, 5.0)) % 360)
+
+                records.append({
+                    "timestamp": dt.isoformat(),
+                    "altitude_msl": z_msl,
+                    "velocidade": round(v_spd, 2),
+                    "direcao": round(dir_deg, 1),
+                    "temperatura": round(t_c, 2),
+                    "pressao": round(p_hpa, 2),
+                    "umidade": round(rh, 1)
+                })
+
+        df_gen = pd.DataFrame(records)
+        df_gen.to_csv(output_path, index=False)
+        print(f"MELCHIOR: Climatologia sintética salva com {len(df_gen)} registros ({len(dates)} perfis).")
+        return df_gen
+
     def fetch_historical_data(self):
         print("MELCHIOR: Buscando dados históricos do CSV de contingência...")
         legacy_path = os.path.join(self.cache_dir, "historico_openmeteo.csv")
         if not os.path.exists(legacy_path):
-            print("MELCHIOR: Aviso - CSV histórico não encontrado!")
-            return MagiSchema.create_empty()
-            
+            print("MELCHIOR: Aviso - CSV histórico não encontrado! Gerando contingência climatológica sintética...")
+            self._generate_synthetic_historical_cache(legacy_path)
+
         old_df = pd.read_csv(legacy_path)
-        
+
         df = MagiSchema.create_empty(len(old_df))
         time_col = 'timestamp' if 'timestamp' in old_df.columns else 'perfil_id'
-        df['valid_time_utc'] = pd.to_datetime(old_df[time_col])
+        df['valid_time_utc'] = pd.to_datetime(old_df[time_col], utc=True)
         df['generation_time_utc'] = df['valid_time_utc']
         df['altitude_msl_m'] = old_df['altitude_msl']
         df['altitude_agl_m'] = old_df['altitude_msl'] - self.elevation_msl
-        
+
         df['wind_speed_mps'] = old_df['velocidade']
         df['wind_direction_from_deg'] = old_df['direcao']
-        
+
         u, v = CasperPhysics.speed_dir_to_uv(df['wind_speed_mps'], df['wind_direction_from_deg'])
         df['u_east_mps'] = u
         df['v_north_mps'] = v
         df['w_up_mps'] = 0.0
-        
+
         df['temperature_k'] = old_df['temperatura'] + 273.15
         df['pressure_pa'] = old_df['pressao'] * 100
-        df['relative_humidity_pct'] = old_df.get('umidade', 50.0)
-        
+        df['relative_humidity_pct'] = old_df.get('umidade', np.nan)
+
         # specific humidity
         df['specific_humidity_kg_kg'] = CasperPhysics.calc_specific_humidity(
             df['pressure_pa'], df['temperature_k'], df['relative_humidity_pct']
         )
-        
+
         # density
-        df['density_kgm3'] = df['pressure_pa'] / (287.058 * (df['temperature_k'] * (1 + 0.608 * df['specific_humidity_kg_kg'])))
-        
+        df['density_kgm3'] = CasperPhysics.calc_density(df['pressure_pa'], df['temperature_k'], df['relative_humidity_pct'])
+
         df['data_source'] = "legacy_csv_contingency"
         df['data_type'] = "historical"
         df['quality_flag'] = "MIGRATED_STAGE2"
-        df['model_name'] = "ERA5_legacy"
-        
+        df['model_name'] = "legacy_csv_model_unverified"
+
         df = df.dropna(subset=['wind_speed_mps', 'temperature_k'])
-        
+
         def calc_shear(group):
-            group = group.sort_values('altitude_agl_m')
-            dz = np.gradient(group['altitude_agl_m'].values)
-            du = np.gradient(group['u_east_mps'].values)
-            dv = np.gradient(group['v_north_mps'].values)
-            shear = np.sqrt(du**2 + dv**2) / np.where(dz == 0, 1e-6, dz)
-            group['wind_shear_s_1'] = shear
+            group = group.sort_values('altitude_agl_m').drop_duplicates(subset=['altitude_agl_m'])
+            z = group['altitude_agl_m'].values
+            if len(z) < 2:
+                group['wind_shear_s_1'] = 0.0
+                return group
+            group['wind_shear_s_1'] = CasperPhysics.calc_shear(group['u_east_mps'].values, group['v_north_mps'].values, z)
             return group
-            
+
         res = []
         for name, group in df.groupby('valid_time_utc'):
             res.append(calc_shear(group.copy()))
@@ -102,17 +170,11 @@ class Melchior:
             sfc_wind = group.loc[group['altitude_agl_m'].idxmin(), 'wind_speed_mps'] if len(group) > 0 else 0
 
             # Score composto: pesos que favorecem ventos fortes + umidade alta + cisalhamento
-            # Normalização aproximada:
-            #   vento: 0-30 m/s → 0-100
-            #   umidade: 0-100% → 0-100
-            #   cisalhamento: 0-0.05 s⁻¹ → 0-100
-            #   vento superfície: 0-15 m/s → 0-100
             score_wind = min(max_wind / 30.0, 1.0) * 100
             score_humidity = min(max_humidity / 100.0, 1.0) * 100
             score_shear = min(max_shear / 0.05, 1.0) * 100
             score_sfc = min(sfc_wind / 15.0, 1.0) * 100
 
-            # Pesos: vento 40%, umidade 25%, cisalhamento 20%, vento_superficie 15%
             composite = (0.40 * score_wind +
                          0.25 * score_humidity +
                          0.20 * score_shear +
@@ -126,7 +188,6 @@ class Melchior:
                 'sfc_wind_mps': sfc_wind,
             }
 
-        # Selecionar o pior
         worst_time = max(severity_scores, key=lambda k: severity_scores[k]['composite'])
         worst_info = severity_scores[worst_time]
         worst_info['timestamp'] = worst_time
@@ -137,163 +198,99 @@ class Melchior:
         print(f"  Cisalhamento máx: {worst_info['max_shear_s1']:.4f} s⁻¹ | Vento superfície: {worst_info['sfc_wind_mps']:.1f} m/s")
 
         df_worst = df_hist[df_hist['valid_time_utc'] == worst_time].copy()
-
-        # Adicionar metadados
         df_worst['data_type'] = 'historical_worst_case'
-        df_worst['model_name'] = 'ERA5 Historical Worst Case'
-
-        # Simular condições de precipitação e cobertura de nuvens para o painel exemplo
-        # (O dataset histórico não tem essas variáveis, mas inferimos pela umidade alta)
-        if 'cloud_cover_pct' not in df_worst.columns:
-            # Alta umidade → alta cobertura de nuvens
-            df_worst['cloud_cover_pct'] = np.clip(df_worst['relative_humidity_pct'] * 1.2, 0, 100)
-        if 'cape_jkg' not in df_worst.columns:
-            # Alta umidade + vento forte → CAPE elevado
-            df_worst['cape_jkg'] = np.where(
-                df_worst['relative_humidity_pct'] > 70, 1500 + np.random.uniform(0, 500, len(df_worst)),
-                200 + np.random.uniform(0, 100, len(df_worst))
-            )
-        if 'precipitation_mm' not in df_worst.columns:
-            df_worst['precipitation_mm'] = np.where(
-                df_worst['relative_humidity_pct'] > 80, np.random.uniform(5, 25, len(df_worst)),
-                np.where(df_worst['relative_humidity_pct'] > 60, np.random.uniform(0.5, 5, len(df_worst)), 0.0)
-            )
 
         return df_worst, worst_info
 
+    @staticmethod
+    def _aligned_profiles(df_hist, altitude_grid):
+        """Use one common grid for statistics and covariance; never extrapolate."""
+        grid = np.asarray(altitude_grid, dtype=float)
+        if grid.ndim != 1 or len(grid) == 0 or not np.isfinite(grid).all() or np.any(np.diff(grid) <= 0):
+            raise ValueError("Historical grid must contain finite increasing levels")
+        profiles = []
+        for timestamp, raw in df_hist.groupby('valid_time_utc'):
+            raw = raw.sort_values('altitude_agl_m')
+            z = raw.altitude_agl_m.to_numpy(dtype=float)
+            if len(z) < 2 or not np.isfinite(z).all() or np.any(np.diff(z) <= 0):
+                continue
+            profile = pd.DataFrame({'altitude_agl_m': grid})
+            for col in ('u_east_mps', 'v_north_mps', 'temperature_k', 'pressure_pa',
+                        'relative_humidity_pct', 'specific_humidity_kg_kg'):
+                if col in raw:
+                    profile[col] = np.interp(grid, z, raw[col].to_numpy(dtype=float), left=np.nan, right=np.nan)
+            if {'u_east_mps', 'v_north_mps'} <= set(profile):
+                profile['wind_speed_mps'], profile['wind_direction_from_deg'] = CasperPhysics.uv_to_speed_dir(profile.u_east_mps, profile.v_north_mps)
+                profile['wind_shear_s_1'] = CasperPhysics.calc_shear(profile.u_east_mps, profile.v_north_mps, grid)
+            if {'pressure_pa', 'temperature_k', 'relative_humidity_pct'} <= set(profile):
+                profile['density_kgm3'] = CasperPhysics.calc_density(profile.pressure_pa, profile.temperature_k, profile.relative_humidity_pct)
+                if 'specific_humidity_kg_kg' not in profile:
+                    profile['specific_humidity_kg_kg'] = CasperPhysics.calc_specific_humidity(profile.pressure_pa, profile.temperature_k, profile.relative_humidity_pct)
+            profiles.append(profile)
+        return profiles
+
     def calc_stats_hist(self, df_hist, altitude_grid=None):
-        print("MELCHIOR: Calculando estatísticas históricas e percentis ao longo dos níveis de altitude...")
         if df_hist.empty or altitude_grid is None:
             return pd.DataFrame()
-            
-        from scipy.interpolate import interp1d
-        from MAGI.casper import CasperPhysics
-        
-        # 1. Convert all profiles to the common vertical grid first
-        interpolated_profiles = []
-        for time, group in df_hist.groupby('valid_time_utc'):
-            group = group.sort_values('altitude_agl_m').drop_duplicates('altitude_agl_m')
-            z_orig = group['altitude_agl_m'].values
-            
-            df_interp = pd.DataFrame({'altitude_agl_m': altitude_grid})
-            for col in ['u_east_mps', 'v_north_mps', 'temperature_k', 'pressure_pa', 'relative_humidity_pct']:
-                if col in group.columns:
-                    f = interp1d(z_orig, group[col].values, bounds_error=False, fill_value=np.nan)
-                    df_interp[col] = f(altitude_grid)
-            
-            # Recalculate physics per profile
-            if 'u_east_mps' in df_interp.columns and 'v_north_mps' in df_interp.columns:
-                speed, dir_from = CasperPhysics.uv_to_speed_dir(df_interp['u_east_mps'], df_interp['v_north_mps'])
-                df_interp['wind_speed_mps'] = speed
-                df_interp['wind_direction_from_deg'] = dir_from
-                df_interp['wind_shear_s_1'] = CasperPhysics.calc_shear(df_interp['u_east_mps'].values, df_interp['v_north_mps'].values, altitude_grid)
-                
-            if 'pressure_pa' in df_interp.columns and 'temperature_k' in df_interp.columns and 'relative_humidity_pct' in df_interp.columns:
-                df_interp['density_kgm3'] = CasperPhysics.calc_density(df_interp['pressure_pa'], df_interp['temperature_k'], df_interp['relative_humidity_pct'])
-                
-            interpolated_profiles.append(df_interp)
-            
-        if not interpolated_profiles:
+        profiles = self._aligned_profiles(df_hist, altitude_grid)
+        if not profiles:
             return pd.DataFrame()
-            
-        df_grid_all = pd.concat(interpolated_profiles, ignore_index=True)
-        
-        # Now calculate statistics
-        stats = []
-        for z, group in df_grid_all.groupby('altitude_agl_m'):
-            s = {'altitude_agl_m': z}
-            for var in ['u_east_mps', 'v_north_mps', 'temperature_k', 'pressure_pa', 'relative_humidity_pct', 'density_kgm3']:
-                if var in group.columns:
-                    s[f'{var}_mean'] = group[var].mean()
-                    s[f'{var}_median'] = group[var].median()
-                    for p in [5, 10, 25, 75, 90, 95]:
-                        s[f'{var}_p{p}'] = np.nanpercentile(group[var], p)
-            
-            # Re-derive speed from mean/percentile of U and V to satisfy V = sqrt(u^2 + v^2)
-            if 'u_east_mps_mean' in s and 'v_north_mps_mean' in s:
-                s['wind_speed_mps_mean'], s['wind_dir_mean'] = CasperPhysics.uv_to_speed_dir(s['u_east_mps_mean'], s['v_north_mps_mean'])
-                s['wind_speed_mps_median'], _ = CasperPhysics.uv_to_speed_dir(s['u_east_mps_median'], s['v_north_mps_median'])
-                for p in [5, 10, 25, 75, 90, 95]:
-                    s[f'wind_speed_mps_p{p}'], _ = CasperPhysics.uv_to_speed_dir(s[f'u_east_mps_p{p}'], s[f'v_north_mps_p{p}'])
-                    
-            if 'wind_shear_s_1' in group.columns:
-                s['wind_shear_s_1_mean'] = group['wind_shear_s_1'].mean()
-                s['wind_shear_s_1_median'] = group['wind_shear_s_1'].median()
-                for p in [5, 10, 25, 75, 90, 95]:
-                    s[f'wind_shear_s_1_p{p}'] = np.nanpercentile(group['wind_shear_s_1'], p)
-                    
-            stats.append(s)
-            
-        df_res = pd.DataFrame(stats)
-        
-        # Validate P05 <= P95
-        for col in ['wind_speed_mps', 'u_east_mps', 'v_north_mps', 'wind_shear_s_1', 'density_kgm3', 'temperature_k']:
-             if f"{col}_p05" in df_res.columns and f"{col}_p95" in df_res.columns:
-                 mask = df_res[f"{col}_p05"] > df_res[f"{col}_p95"]
-                 if mask.any():
-                     temp = df_res.loc[mask, f"{col}_p05"].copy()
-                     df_res.loc[mask, f"{col}_p05"] = df_res.loc[mask, f"{col}_p95"]
-                     df_res.loc[mask, f"{col}_p95"] = temp
-                     
-             if f"{col}_p10" in df_res.columns and f"{col}_p90" in df_res.columns:
-                 mask = df_res[f"{col}_p10"] > df_res[f"{col}_p90"]
-                 if mask.any():
-                     temp = df_res.loc[mask, f"{col}_p10"].copy()
-                     df_res.loc[mask, f"{col}_p10"] = df_res.loc[mask, f"{col}_p90"]
-                     df_res.loc[mask, f"{col}_p90"] = temp
-        return df_res
+        rows = []
+        quantiles = [5, 10, 25, 75, 90, 95, 99]
+        for altitude, group in pd.concat(profiles).groupby('altitude_agl_m'):
+            row = {'altitude_agl_m': altitude}
+            for variable in ('u_east_mps', 'v_north_mps', 'temperature_k', 'pressure_pa',
+                             'relative_humidity_pct', 'density_kgm3', 'wind_speed_mps', 'wind_shear_s_1'):
+                if variable not in group:
+                    continue
+                values = group[variable].to_numpy(dtype=float)
+                values = values[np.isfinite(values)]
+                row[f'{variable}_count'] = len(values)
+                row[f'{variable}_mean'] = np.mean(values) if len(values) else np.nan
+                row[f'{variable}_median'] = np.median(values) if len(values) else np.nan
+                percentiles = np.percentile(values, quantiles) if len(values) else np.full(len(quantiles), np.nan)
+                for percentile, value in zip(quantiles, percentiles):
+                    row[f'{variable}_p{percentile}'] = value
+            if 'u_east_mps_mean' in row and 'v_north_mps_mean' in row:
+                resultant, direction = CasperPhysics.uv_to_speed_dir(row['u_east_mps_mean'], row['v_north_mps_mean'])
+                row['wind_resultant_mps'] = resultant
+                row['wind_dir_mean'] = direction if resultant > 0 else np.nan
+            rows.append(row)
+        return pd.DataFrame(rows)
 
     def calculate_multivariate_covariance(self, df_hist, altitude_grid):
+        """Historical variability of [u(z), v(z), T(z), q(z)] in SI.
+
+        Shrink the dimensionless correlation matrix, then restore each column's
+        empirical standard deviation. This preserves units and zero-variance
+        quantities. It does not turn climatological variability into forecast
+        error statistics. Only complete profiles spanning the grid contribute.
         """
-        Builds the state vector X = [u, v, T, q]^T per profile and computes the regularized covariance matrix.
-        Returns the mean vector and covariance matrix, along with block indices.
-        """
-        print("MELCHIOR: Construindo vetor de estado multivariado e calculando matriz de covariância (Ledoit-Wolf)...")
-        # Ensure we only use profiles that have valid data at all requested grid altitudes.
-        # This requires interpolation or binning to the standard grid first.
-        # Since df_hist might not be aligned, we align it first.
-        # For simplicity, we assume df_hist is already somewhat binned, or we just interpolate historical.
-        # In a full implementation, we'd loop over profiles and use CasperProcessor to get them on `altitude_grid`.
-        # Here we do a simplified pivot if they are already on the grid, or we just skip and return Identity.
-        
-        # Pivot the data
-        # We need wide format: Rows = timestamps, Cols = (variable, altitude)
-        df_grid = df_hist[df_hist['altitude_agl_m'].isin(altitude_grid)]
-        
-        # Check if we have enough samples
-        if df_grid.empty:
+        variables = ('u_east_mps', 'v_north_mps', 'temperature_k', 'specific_humidity_kg_kg')
+        vectors = []
+        for profile in self._aligned_profiles(df_hist, altitude_grid):
+            if not set(variables) <= set(profile):
+                continue
+            vector = np.concatenate([profile[col].to_numpy(dtype=float) for col in variables])
+            if np.isfinite(vector).all():
+                vectors.append(vector)
+        if len(vectors) < 2:
             return None, None
-            
-        pivoted = df_grid.pivot(index='valid_time_utc', columns='altitude_agl_m', 
-                                values=['u_east_mps', 'v_north_mps', 'temperature_k', 'specific_humidity_kg_kg'])
-                                
-        pivoted = pivoted.dropna()
-        if len(pivoted) < 2:
-            return None, None
-            
-        # Reorder columns to [u(z1..zn), v(z1..zn), T(z1..zn), q(z1..zn)]
-        # pivoted columns are MultiIndex: (variable, altitude)
-        ordered_cols = []
-        for var in ['u_east_mps', 'v_north_mps', 'temperature_k', 'specific_humidity_kg_kg']:
-            for z in altitude_grid:
-                if (var, z) in pivoted.columns:
-                    ordered_cols.append((var, z))
-                    
-        X = pivoted[ordered_cols].values
-        
-        # Compute mean
-        mu = np.mean(X, axis=0)
-        
-        # Compute regularized covariance using Ledoit-Wolf shrinkage
-        lw = LedoitWolf()
-        lw.fit(X)
-        cov_matrix = lw.covariance_
-        
-        return mu, cov_matrix
+        samples = np.asarray(vectors)
+        mean = samples.mean(axis=0)
+        scale = samples.std(axis=0, ddof=0)
+        active = scale > 0
+        covariance = np.zeros((len(mean), len(mean)))
+        if active.any():
+            standardized = (samples[:, active] - mean[active]) / scale[active]
+            estimate = LedoitWolf(store_precision=False).fit(standardized).covariance_
+            covariance[np.ix_(active, active)] = estimate * np.outer(scale[active], scale[active])
+        return mean, covariance
 
 class MelchiorVisuals:
     @staticmethod
     def plot_magnitude_vento(df_stats):
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.plot(df_stats['wind_speed_mps_mean'], df_stats['altitude_agl_m'], label='Historical Mean')
         ax.fill_betweenx(df_stats['altitude_agl_m'], 

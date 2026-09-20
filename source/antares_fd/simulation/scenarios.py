@@ -20,9 +20,6 @@ BALLISTIC = "ballistic"
 DROGUE_ONLY = "drogue_only"
 
 REQUIRED_SCENARIOS = (NOMINAL, MAIN_AT_APOGEE, ONLY_REEFING)
-# Project recovery configuration uses the drogue CdS as the reefed effective
-# area.  Keep this factor explicit so it is traceable in scenario artifacts.
-REEFED_CDS_FACTOR = 0.15
 
 
 @dataclass(frozen=True)
@@ -64,6 +61,10 @@ def _only_reefing(recovery: dict[str, Any]) -> None:
     reduction is read from the configured main parachute and is therefore part
     of the scenario definition rather than report logic.
     """
+    from antares_fd.config.exceptions import ConfigurationError
+    factor = recovery.get("reefing", {}).get("cd_s_fraction")
+    if factor is None or not 0 < factor <= 1:
+        raise ConfigurationError("only_reefing requires recovery.reefing.cd_s_fraction in (0, 1]")
     main_cd_s = None
     for device in _devices(recovery):
         if str(device.get("id", "")).lower() == "main":
@@ -78,7 +79,7 @@ def _only_reefing(recovery: dict[str, Any]) -> None:
             trigger["type"] = "apogee"
             trigger.setdefault("apogee", {})["enabled"] = True
             if main_cd_s is not None:
-                device.setdefault("aerodynamics", {})["cd_s"] = float(main_cd_s) * REEFED_CDS_FACTOR
+                device.setdefault("aerodynamics", {})["cd_s"] = float(main_cd_s) * factor
 
 
 def _ballistic(recovery: dict[str, Any]) -> None:
@@ -95,7 +96,7 @@ def _drogue_only(recovery: dict[str, Any]) -> None:
 SCENARIOS: dict[str, ScenarioDefinition] = {
     NOMINAL: ScenarioDefinition(NOMINAL, "Nominal Flight", "Configured drogue then main recovery sequence.", "none", False, _nominal),
     MAIN_AT_APOGEE: ScenarioDefinition(MAIN_AT_APOGEE, "Main Parachute at Apogee", "Drogue disabled; main parachute triggers at apogee.", "apogee", True, _main_at_apogee),
-    ONLY_REEFING: ScenarioDefinition(ONLY_REEFING, "Only Reefing Recovery", f"Reefed main state uses {REEFED_CDS_FACTOR:.2f} × the configured main CdS at apogee, followed by the configured disreefed main.", "apogee", True, _only_reefing),
+    ONLY_REEFING: ScenarioDefinition(ONLY_REEFING, "Only Reefing Recovery", "Reefed main CdS fraction comes from recovery.reefing.cd_s_fraction; main disreefs at configured altitude.", "apogee", True, _only_reefing),
     BALLISTIC: ScenarioDefinition(BALLISTIC, "Ballistic Descent", "All recovery devices disabled.", "none", False, _ballistic),
     DROGUE_ONLY: ScenarioDefinition(DROGUE_ONLY, "Drogue Only", "Main parachute disabled; drogue remains configured.", "main_disabled", True, _drogue_only),
 }

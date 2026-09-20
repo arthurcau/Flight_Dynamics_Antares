@@ -38,7 +38,7 @@ def build_motor(config, project_dir: Path):
     if config.get("type", "solid").lower() != "solid":
         raise ConfigurationError(f"Unsupported motor type: {config.get('type')}")
     required = (
-        "thrust_source", "burn_time", "dry_mass", "dry_inertia",
+        "thrust_source", "dry_mass", "dry_inertia",
         "center_of_dry_mass_position", "grains_center_of_mass_position",
         "grain_number", "grain_separation", "grain_density", "grain_outer_radius",
         "grain_initial_inner_radius", "grain_initial_height", "nozzle_radius", "throat_radius",
@@ -47,6 +47,8 @@ def build_motor(config, project_dir: Path):
     if missing:
         raise ConfigurationError(f"Failed to build SolidMotor: required motor fields: {', '.join(missing)}")
     kwargs = {key: config[key] for key in required}
+    if config.get("burn_time") is not None:
+        kwargs["burn_time"] = config["burn_time"]
     for key in ("interpolation_method", "coordinate_system_orientation", "nozzle_position"):
         if key in config:
             kwargs[key] = config[key]
