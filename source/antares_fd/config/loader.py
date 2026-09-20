@@ -14,6 +14,8 @@ def _load_yaml_file(file_path: Path) -> dict:
             data = yaml.safe_load(f)
             if data is None:
                 return {}
+            if not isinstance(data, dict):
+                raise ConfigurationError(f"YAML root must be a mapping in {file_path}")
             return data
         except yaml.YAMLError as e:
             raise ConfigurationError(f"Malformed YAML in {file_path}: {e}")

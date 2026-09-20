@@ -1,10 +1,26 @@
 from pathlib import Path
-from rocketpy import Rocket
+from dataclasses import dataclass
+import numpy as np
+from rocketpy import Rocket, Function
 from antares_fd.config.exceptions import ConfigurationError
+
+
+@dataclass
+class BoundedDrag:
+    """Callable drag law that enforces the measured Mach interval."""
+    curve: Function
+    minimum: float
+    maximum: float
+
+    def __call__(self, mach):
+        if np.any(np.asarray(mach) < self.minimum) or np.any(np.asarray(mach) > self.maximum):
+            raise ConfigurationError(f"Drag requested outside Mach [{self.minimum}, {self.maximum}]: {mach}")
+        return self.curve(mach)
+
 
 def _resolve_drag_source(drag_config, project_dir: Path):
     if not drag_config:
-        return 0.0
+        raise ConfigurationError("Both power_on and power_off drag sources are required")
     
     source_type = drag_config.get("source_type")
     if source_type == "file":
@@ -18,13 +34,29 @@ def _resolve_drag_source(drag_config, project_dir: Path):
             # However, if this is 00_Copy_This, it might not exist.
             # We'll fail fast as requested by architecture principles.
             raise ConfigurationError(f"Drag file not found: {full_path}")
-        return str(full_path)
+        interpolation = drag_config.get("interpolation", "linear")
+        extrapolation = drag_config.get("extrapolation", "forbidden")
+        if interpolation not in {"linear", "spline", "akima"}:
+            raise ConfigurationError(f"Unsupported drag interpolation: {interpolation}")
+        if extrapolation not in {"forbidden", "constant", "zero", "natural"}:
+            raise ConfigurationError(f"Unsupported drag extrapolation: {extrapolation}")
+        curve = Function(str(full_path), interpolation=interpolation,
+                         extrapolation="constant" if extrapolation == "forbidden" else extrapolation)
+        points = curve.source
+        if (not np.isfinite(points).all() or len(points) < 2
+                or np.any(np.diff(points[:, 0]) <= 0) or np.any(points < 0)):
+            raise ConfigurationError(f"Invalid Mach/Cd data: {full_path}")
+        if extrapolation == "forbidden":
+            return BoundedDrag(curve, float(points[0, 0]), float(points[-1, 0]))
+        return curve
     elif source_type == "constant":
         const_val = drag_config.get("constant")
         if const_val is None:
             raise ConfigurationError("drag source_type is 'constant' but no 'constant' provided")
+        if not np.isfinite(float(const_val)) or float(const_val) < 0:
+            raise ConfigurationError("Constant drag must be finite and nonnegative")
         return float(const_val)
-    return 0.0
+    raise ConfigurationError(f"Unsupported drag source_type: {source_type}")
 
 def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
     """Builds the RocketPy Rocket object from the vehicle configuration."""
@@ -33,6 +65,13 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
     # --- 1. Basic Geometry and Mass Properties ---
     geometry = vehicle_config.get("geometry", {})
     mass_props = vehicle_config.get("mass_properties", {})
+    if geometry.get("reference_area_override") is not None:
+        raise ConfigurationError("reference_area_override is not supported; provide reference_diameter")
+    for section in ("air_brakes", "body_sections", "mass_components", "payloads"):
+        if vehicle_config.get(section):
+            raise ConfigurationError(f"vehicle.{section} is not implemented")
+    if vehicle_config.get("staging", {}).get("enabled", False):
+        raise ConfigurationError("Staging requires an event model and explicit post-separation properties")
     
     ref_dia = geometry.get("reference_diameter")
     if ref_dia is None:
@@ -81,6 +120,11 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
             raise ConfigurationError("vehicle.motor_mount.position is required")
         if motor:
             rocket.add_motor(motor=motor, position=pos)
+        else:
+            raise ConfigurationError("vehicle.motor_mount is enabled but no motor was supplied")
+        alignment = motor_mount.get("alignment", {})
+        if any(value != 0 for value in alignment.values()):
+            raise ConfigurationError("Nonzero motor_mount.alignment is not implemented")
 
     # --- 4. Aerodynamic Surfaces ---
     nose = vehicle_config.get("nose", {})
@@ -100,6 +144,7 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
             kind=kind,
             position=pos,
             base_radius=base_radius
+            , bluffness=nose.get("bluffness")
         )
 
     tails = vehicle_config.get("tails", [])
@@ -162,6 +207,10 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
                     cant_angle=f.get("cant_angle_deg", 0.0),
                     radius=radius
                 )
+            else:
+                raise ConfigurationError(f"Unsupported fin type: {ftype}")
+            if f.get("airfoil", {}).get("enabled", False):
+                raise ConfigurationError("Custom fin airfoil is not implemented by this builder")
 
     # --- 5. Rail Guides ---
     rails = vehicle_config.get("rail_guides", {})
@@ -176,4 +225,12 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
             angular_position=rails.get("angular_position_deg", 45.0)
         )
 
+    for name, method in (("center_of_mass", rocket.add_cm_eccentricity),
+                         ("center_of_pressure", rocket.add_cp_eccentricity),
+                         ("thrust", rocket.add_thrust_eccentricity)):
+        values = vehicle_config.get("eccentricities", {}).get(name, {})
+        if values.get("enabled", False):
+            if values.get("x") is None or values.get("y") is None:
+                raise ConfigurationError(f"vehicle.eccentricities.{name} requires x and y")
+            method(values["x"], values["y"])
     return rocket

@@ -14,6 +14,8 @@ def _build_trigger(trigger_config):
         value = alt_config.get("value")
         if value is None:
             raise ConfigurationError("recovery trigger altitude value is required")
+        if alt_config.get("direction", "descending") not in {"descending", "descent"}:
+            raise ConfigurationError("Altitude recovery triggers currently support descent only")
         # RocketPy uses the float value directly for descending altitude triggers
         return float(value)
     elif ttype == "time":
@@ -41,6 +43,8 @@ def add_recovery_system(rocket, config):
         return
         
     settings = config.get("settings", {})
+    if settings.get("altitude_reference", "AGL") != "AGL":
+        raise ConfigurationError("Recovery altitude_reference must be AGL")
     default_sampling = settings.get("default_sampling_rate", 100.0)
     
     devices = config.get("devices", [])

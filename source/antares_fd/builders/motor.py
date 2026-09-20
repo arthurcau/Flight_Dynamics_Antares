@@ -1,49 +1,64 @@
+"""Solid motor construction with explicit validation of the thrust curve."""
+
 from pathlib import Path
-from rocketpy import SolidMotor, HybridMotor, LiquidMotor
+
+import numpy as np
+from rocketpy import SolidMotor
+from rocketpy.motors.motor import Motor
+
 from antares_fd.config.exceptions import ConfigurationError
 
+
+def _thrust_source(source, project_dir):
+    if not isinstance(source, str):
+        return source
+    path = Path(project_dir) / source
+    if not path.is_file():
+        raise ConfigurationError(f"Motor thrust file not found: {path}")
+    if path.suffix.lower() != ".eng":
+        return str(path)
+
+    # RocketPy inserts (0, 0) when reading RASP files. Some measured files
+    # already contain that point. Remove only the redundant origin; preserve
+    # every measured sample and never modify the source file.
+    _, _, points = Motor.import_eng(str(path))
+    points = np.asarray(points, dtype=float)
+    if len(points) > 1 and np.array_equal(points[:2], [[0, 0], [0, 0]]):
+        points = points[1:]
+    if (len(points) < 2 or not np.isfinite(points).all()
+            or np.any(np.diff(points[:, 0]) <= 0) or np.any(points[:, 1] < 0)):
+        raise ConfigurationError(f"Invalid thrust curve in {path}: require finite, increasing times and nonnegative thrust.")
+    return points
+
+
 def build_motor(config, project_dir: Path):
-    """
-    Builds a RocketPy Motor object from configuration.
-    
-    NOTE: The canonical schema for motor.yaml has not yet been fully 
-    defined by the engineering team. This builder provides a minimal 
-    implementation to allow the simulation pipeline to run, assuming 
-    the configuration matches RocketPy's SolidMotor arguments.
-    """
-    print("Building Motor...")
+    """Build a SolidMotor; reject missing data and non-finite mass/impulse."""
     if not config:
         raise ConfigurationError("motor configuration is missing. A motor.yaml file is required.")
-        
-    motor_type = config.get("type", "solid").lower()
-    
-    if motor_type == "solid":
-        # We expect config to provide the basic RocketPy SolidMotor parameters
-        thrust_source = config.get("thrust_source")
-        if isinstance(thrust_source, str):
-            thrust_source = str(project_dir / thrust_source)
-            
-        try:
-            return SolidMotor(
-                thrust_source=thrust_source,
-                burn_time=config.get("burn_time"),
-                dry_mass=config.get("dry_mass"),
-                dry_inertia=config.get("dry_inertia", (0,0,0)),
-                center_of_dry_mass_position=config.get("center_of_dry_mass_position"),
-                grains_center_of_mass_position=config.get("grains_center_of_mass_position"),
-                grain_number=config.get("grain_number"),
-                grain_separation=config.get("grain_separation"),
-                grain_density=config.get("grain_density"),
-                grain_outer_radius=config.get("grain_outer_radius"),
-                grain_initial_inner_radius=config.get("grain_initial_inner_radius"),
-                grain_initial_height=config.get("grain_initial_height"),
-                nozzle_radius=config.get("nozzle_radius"),
-                throat_radius=config.get("throat_radius"),
-                interpolation_method=config.get("interpolation_method", "linear"),
-                coordinate_system_orientation=config.get("coordinate_system_orientation", "nozzle_to_combustion_chamber")
-            )
-        except TypeError as e:
-            raise ConfigurationError(f"Failed to build SolidMotor. Verify motor.yaml matches required RocketPy arguments. Error: {e}")
-            
-    else:
-        raise ConfigurationError(f"Motor type '{motor_type}' is not yet supported or defined.")
+    if config.get("type", "solid").lower() != "solid":
+        raise ConfigurationError(f"Unsupported motor type: {config.get('type')}")
+    required = (
+        "thrust_source", "burn_time", "dry_mass", "dry_inertia",
+        "center_of_dry_mass_position", "grains_center_of_mass_position",
+        "grain_number", "grain_separation", "grain_density", "grain_outer_radius",
+        "grain_initial_inner_radius", "grain_initial_height", "nozzle_radius", "throat_radius",
+    )
+    missing = [key for key in required if config.get(key) is None]
+    if missing:
+        raise ConfigurationError(f"Failed to build SolidMotor: required motor fields: {', '.join(missing)}")
+    kwargs = {key: config[key] for key in required}
+    for key in ("interpolation_method", "coordinate_system_orientation", "nozzle_position"):
+        if key in config:
+            kwargs[key] = config[key]
+    try:
+        kwargs["thrust_source"] = _thrust_source(config["thrust_source"], project_dir)
+        motor = SolidMotor(**kwargs)
+        times = np.unique(np.r_[motor.thrust.source[:, 0], motor.burn_time])
+        values = np.r_[motor.total_impulse, motor.propellant_initial_mass,
+                       motor.thrust(times), motor.propellant_mass(times),
+                       motor.total_mass_flow_rate(times)]
+        if not np.isfinite(values).all() or motor.total_impulse <= 0:
+            raise ValueError("thrust, impulse and propellant mass/flow must be finite; impulse must be positive")
+    except (TypeError, ValueError, IndexError) as exc:
+        raise ConfigurationError(f"Failed to build SolidMotor: {exc}") from exc
+    return motor
