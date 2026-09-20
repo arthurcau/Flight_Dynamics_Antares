@@ -7,7 +7,7 @@
       <excludeFolder url="file://$MODULE_DIR$/MAGI/dados_cache" />
       <excludeFolder url="file://$MODULE_DIR$/results" />
     </content>
-    <orderEntry type="jdk" jdkName="~\PycharmProjects\Flight_Dynamics_Antares\.venv" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="~/Documents/GitHub/Flight_Dynamics_Antares/.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
