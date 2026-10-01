@@ -24,6 +24,8 @@ REQUIRED_SCENARIOS = (NOMINAL, MAIN_AT_APOGEE, ONLY_REEFING)
 
 @dataclass(frozen=True)
 class ScenarioDefinition:
+    """Describe a named recovery override without retaining a live config."""
+
     scenario_id: str
     title: str
     recovery_description: str
@@ -33,14 +35,17 @@ class ScenarioDefinition:
 
 
 def _devices(recovery: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the configured device list, creating it when absent."""
     return recovery.setdefault("devices", [])
 
 
 def _nominal(recovery: dict[str, Any]) -> None:
+    """Leave the project's recovery devices unchanged for the nominal case."""
     return None
 
 
 def _main_at_apogee(recovery: dict[str, Any]) -> None:
+    """Disable the drogue and set the main parachute trigger to apogee."""
     for device in _devices(recovery):
         device_id = str(device.get("id", "")).lower()
         if device_id == "drogue":
@@ -83,12 +88,14 @@ def _only_reefing(recovery: dict[str, Any]) -> None:
 
 
 def _ballistic(recovery: dict[str, Any]) -> None:
+    """Disable the recovery system and all individual deployment devices."""
     recovery["enabled"] = False
     for device in _devices(recovery):
         device["enabled"] = False
 
 
 def _drogue_only(recovery: dict[str, Any]) -> None:
+    """Enable only the device whose ID is ``drogue``."""
     for device in _devices(recovery):
         device["enabled"] = str(device.get("id", "")).lower() == "drogue"
 
@@ -103,6 +110,7 @@ SCENARIOS: dict[str, ScenarioDefinition] = {
 
 
 def get_scenario(scenario_id: str) -> ScenarioDefinition:
+    """Return a registered scenario or raise for an unsupported ID."""
     key = str(scenario_id).strip().lower()
     if key not in SCENARIOS:
         raise ValueError(f"Unsupported scenario_id: {scenario_id}")

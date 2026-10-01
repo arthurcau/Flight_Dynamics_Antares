@@ -1,10 +1,20 @@
-import os
-import json
-import pandas as pd
+"""Build a standalone LaTeX or plain-text summary from Monte Carlo artifacts."""
+
 from pathlib import Path
 import subprocess
 
+import pandas as pd
+from antares_fd.analysis.uq import summarize_finite_values
+from antares_fd.storage import read_jsonl_objects
+
+
+def _summarize_metric(values: pd.Series, metric: str) -> tuple[int, float | None, float | None]:
+    """Return the valid count, sample mean, and sample standard deviation."""
+    return summarize_finite_values(values, metric, ddof=1)
+
+
 def generate_latex_report(config, results_dir: Path, run_id: str):
+    """Write the report from saved configuration and results, with a text fallback."""
     print("[Report] Generating LaTeX report...")
     
     # --- 1. Extract Config & Variations ---
@@ -27,23 +37,17 @@ def generate_latex_report(config, results_dir: Path, run_id: str):
     outputs_file = results_dir / "mc_sim.outputs.txt"
     results_text = ""
     if outputs_file.exists():
-        records = []
-        with open(outputs_file, "r") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        records.append(json.loads(line))
-                    except:
-                        pass
+        records = read_jsonl_objects(outputs_file)
         if records:
             df = pd.DataFrame(records)
-            results_text += "\\begin{table}[h!]\n\\centering\n\\begin{tabular}{|l|c|c|}\n\\hline\n"
-            results_text += "\\textbf{Parameter} & \\textbf{Mean} & \\textbf{Std Dev} \\\\\n\\hline\n"
+            results_text += "\\begin{table}[h!]\n\\centering\n\\begin{tabular}{|l|c|c|c|}\n\\hline\n"
+            results_text += "\\textbf{Parameter} & \\textbf{N} & \\textbf{Mean} & \\textbf{Std Dev} \\\\\n\\hline\n"
             for col in ['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number']:
                 if col in df.columns:
-                    mean_val = df[col].mean()
-                    std_val = df[col].std()
-                    results_text += f"{col.replace('_', ' ').title()} & {mean_val:.2f} & {std_val:.2f} \\\\\n"
+                    count, mean_val, std_val = _summarize_metric(df[col], col)
+                    mean_text = f"{mean_val:.2f}" if mean_val is not None else "N/A"
+                    std_text = f"{std_val:.2f}" if std_val is not None else "N/A"
+                    results_text += f"{col.replace('_', ' ').title()} & {count} & {mean_text} & {std_text} \\\\\n"
             results_text += "\\hline\n\\end{tabular}\n\\caption{Monte Carlo Summary Statistics}\n\\end{table}\n"
     
     # --- 3. LaTeX Template ---
@@ -108,7 +112,7 @@ The statistical summary of the landing dispersion and flight parameters is prese
     if plot_conv.exists():
         latex_content += f"\n\\begin{{figure}}[h!]\n    \\centering\n    \\includegraphics[width=0.9\\textwidth]{{{plot_conv.name}}}\n    \\caption{{Monte Carlo Statistical Convergence (Data Reliability)}}\n\\end{{figure}}\n"
 
-    latex_content += "\end{document}\n"
+    latex_content += "\\end{document}\n"
 
 
 
@@ -159,9 +163,13 @@ The statistical summary of the landing dispersion and flight parameters is prese
             if 'df' in locals():
                 for col in ['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number']:
                     if col in df.columns:
-                        mean_val = df[col].mean()
-                        std_val = df[col].std()
-                        f_txt.write(f"{col.replace('_', ' ').title()}: Mean = {mean_val:.2f} | Std Dev = {std_val:.2f}\n")
+                        count, mean_val, std_val = _summarize_metric(df[col], col)
+                        mean_text = f"{mean_val:.2f}" if mean_val is not None else "N/A"
+                        std_text = f"{std_val:.2f}" if std_val is not None else "N/A"
+                        f_txt.write(
+                            f"{col.replace('_', ' ').title()}: N = {count} | "
+                            f"Mean = {mean_text} | Std Dev = {std_text}\n"
+                        )
             
             f_txt.write("\n(Check the results directory for the PDF dispersion plots)\n")
         

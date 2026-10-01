@@ -17,6 +17,10 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Python packaging outputs
+build/
+*.egg-info/
+
 # Antares Flight Dynamics / RocketPy Outputs
 *.kml
 *_map.pdf
@@ -42,4 +46,3 @@ monte_carlo_results*
 
 # All generated simulation results
 results/
-

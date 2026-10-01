@@ -11,6 +11,7 @@ Gathers deterministic reproducibility metadata:
 
 import hashlib
 import importlib.metadata
+import os
 import platform
 import subprocess
 from pathlib import Path
@@ -35,12 +36,40 @@ def compute_file_sha256(filepath: Path) -> Optional[str]:
     return h.hexdigest()
 
 
+def _working_tree_snapshot_sha256(repo_dir: Path) -> str:
+    """Hash tracked diffs and nonignored untracked files without absolute paths."""
+    digest = hashlib.sha256()
+    diff = subprocess.check_output(
+        ["git", "diff", "--binary", "HEAD"], cwd=str(repo_dir),
+        stderr=subprocess.DEVNULL,
+    )
+    digest.update(b"tracked-diff\0")
+    digest.update(diff)
+    untracked = subprocess.check_output(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        cwd=str(repo_dir), stderr=subprocess.DEVNULL,
+    )
+    for encoded_path in sorted(item for item in untracked.split(b"\0") if item):
+        relative = os.fsdecode(encoded_path)
+        digest.update(b"untracked\0")
+        digest.update(encoded_path)
+        digest.update(b"\0")
+        path = Path(repo_dir) / relative
+        if path.is_file():
+            digest.update(path.read_bytes())
+        else:
+            digest.update(b"MISSING_OR_NONFILE")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def get_git_provenance(repo_dir: Path) -> Dict[str, str]:
-    """Extracts git commit, branch, and dirty status."""
+    """Extract commit state and a content hash for the exact dirty worktree."""
     provenance = {
         "commit": "unknown",
         "branch": "unknown",
         "dirty": "unknown",
+        "working_tree_snapshot_sha256": "unknown",
     }
     try:
         commit = subprocess.check_output(
@@ -64,6 +93,7 @@ def get_git_provenance(repo_dir: Path) -> Dict[str, str]:
         provenance["commit"] = commit
         provenance["branch"] = branch
         provenance["dirty"] = "dirty" if len(status) > 0 else "clean"
+        provenance["working_tree_snapshot_sha256"] = _working_tree_snapshot_sha256(repo_dir)
     except Exception:
         pass
     return provenance

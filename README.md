@@ -39,6 +39,10 @@ Built on Python and RocketPy. The architecture separates the simulation engine f
 - `scripts/`: Automation and execution utilities.
 - `MAGI/`: Specialized tooling.
 
+The [notebook and Python script catalog](docs/CATALOGO_NOTEBOOKS_E_SCRIPTS.md)
+maps the historical notebooks to the current execution scripts, describes their
+inputs and outputs, and records the differences found during the repository audit.
+
 ## Creating a New Rocket
 
 > 💡 **Novo na equipe?** Veja o [Guia Rápido Passo a Passo (COMO_USAR.md)](docs/COMO_USAR.md).

@@ -1,0 +1,67 @@
+schema_version: 1
+project: neblina_1
+audit_context:
+  git_head_at_review: 07d6cc2ac0818a62c41a3e93f3b3e9152d40f4c5
+  planned_launch_date_in_current_yaml: '2026-09-03'
+  actual_flight_date_status: UNKNOWN
+variants:
+  - id: NEBLINA1_PREFLIGHT_RECONSTRUCTION
+    role: PREFLIGHT
+    status: PARTIALLY_RECONSTRUCTED_PREFLIGHT_MODEL
+    runnable: false
+    configuration: null
+    evidence:
+      - claim: The current launch YAML labels 2026-09-03 as planned; no verified actual flight date is established by that file.
+        origin: DERIVED
+        source: projects/neblina_1/config/launch.yaml
+      - claim: A Neblina vehicle configuration appears in local Git history on 2026-09-08, but without the actual flight date or a dated preflight freeze its availability before flight is unknown.
+        origin: INFERRED
+        source: 'git log --follow -- projects/neblina_1/config/vehicle.yaml; git show 6c20101:projects/neblina_1/config/vehicle.yaml'
+    missing_evidence:
+      - Verified actual flight date and time.
+      - Archived preflight vehicle, motor, aero, recovery and launch inputs with timestamps or source records.
+      - Preflight atmospheric data or a dated forecast snapshot.
+    identified_changes: []
+
+  - id: NEBLINA1_AS_FLOWN
+    role: AS_FLOWN
+    status: BLOCKED_BY_MISSING_METADATA
+    runnable: false
+    configuration: null
+    evidence:
+      - claim: Current launch configuration explicitly marks its date and time as planned.
+        origin: MODELED
+        source: projects/neblina_1/config/launch.yaml
+      - claim: The current MAGI target is 15:00 local while configured launch is 10:30 local on 2026-09-03.
+        origin: MODELED
+        source: projects/neblina_1/config/environment.yaml; projects/neblina_1/config/launch.yaml
+    missing_evidence:
+      - Actual launch time, rail inclination and heading, with source and uncertainty.
+      - As-flown mass, center of gravity, inertia and configuration differences with measurement records.
+      - Archived actual-day atmospheric profile or documented weather reconstruction.
+      - Evidence that the selected motor curve represents the flown motor.
+    identified_changes: []
+
+  - id: NEBLINA1_POSTFLIGHT_RECONSTRUCTION
+    role: POSTFLIGHT
+    status: NOT_YET_VALIDATED
+    runnable: false
+    configuration: null
+    evidence: []
+    missing_evidence:
+      - A defensible as-flown baseline and observable flight residuals before parameter identification.
+      - Independent validation data or an explicit statement that the fitted flight is calibration-only.
+    identified_changes: []
+
+  - id: NEBLINA1_CURRENT_MODEL_REFERENCE
+    role: CURRENT_REFERENCE
+    status: REFERENCE_ONLY
+    runnable: true
+    configuration: project_current_yaml
+    evidence:
+      - claim: The repository contains runnable current Neblina YAML, motor and Cd tables.
+        origin: MODELED
+        source: projects/neblina_1/config/; projects/neblina_1/motors/; projects/neblina_1/aero/
+    missing_evidence:
+      - A run of this model cannot be labeled preflight prediction or as-flown validation without dated input provenance.
+    identified_changes: []

@@ -1,3 +1,9 @@
+"""Public flight and campaign entry points.
+
+Project scripts use this package surface; implementation details stay in
+their own modules, and the campaign runner is imported lazily.
+"""
+
 from .runner import run_flight
 from .results import print_flight_summary
 from .orchestrator import execute_scenario

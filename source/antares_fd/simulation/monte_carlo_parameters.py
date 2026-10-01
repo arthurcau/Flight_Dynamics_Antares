@@ -6,6 +6,12 @@ from antares_fd.config.exceptions import ConfigurationError
 
 
 def launch_angle_distribution(nominal, settings, name):
+    """Translate uniform bounds or a normal spread to RocketPy sampler arguments.
+
+    Uniform settings use RocketPy's ``(low, high, "uniform")`` form; normal
+    settings use ``(mean, standard_deviation)``. A zero spread leaves the angle
+    deterministic.
+    """
     settings = settings or {}
     distribution = settings.get("distribution", "normal")
     if distribution == "uniform":

@@ -11,6 +11,7 @@ from antares_fd.analysis.requirements import RequirementDB, EvaluatedRequirement
 from antares_fd.analysis.provenance import collect_reproducibility_data, evaluate_model_validity
 from antares_fd.reporting.theme import setup_report_styles, BaseReportDocTemplate
 from antares_fd.reporting import plot_registry, tables
+from antares_fd.storage import read_jsonl_objects
 
 
 class ReportContext:
@@ -323,15 +324,7 @@ class FlightDynamicsReportBuilder:
             if mc_file.suffix.lower() == ".parquet":
                 records = __import__("pandas").read_parquet(mc_file).to_dict("records")
             else:
-                records = []
-                with open(mc_file, "r") as ff:
-                    for line in ff:
-                        if not line.strip():
-                            continue
-                        try:
-                            records.append(json.loads(line))
-                        except Exception:
-                            pass
+                records = read_jsonl_objects(mc_file)
             if records:
                 stoch_reqs = stochastic_evaluator(pd.DataFrame(records))
                 if stoch_reqs:

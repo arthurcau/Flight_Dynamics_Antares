@@ -1,0 +1,288 @@
+schema_version: "1.0"
+dataset_id: neblina_1_lasc_2026_onboard
+header_channel: time_ms
+timestamp_channel: time_ms
+gap_factor: 1.5
+section_markers:
+  - DADOS DE VÔO
+raw_data:
+  path: data/flight_data/Dados de Vôo Neblina - LASC 2026.log
+  format: csv_with_text_preamble
+  encoding: utf-8
+  delimiter: ","
+  missing_tokens: ["", "nan", "NaN", "NAN"]
+  time_representation: "time_ms device counter; epoch, clock origin, and reset behavior undocumented"
+related_files:
+  - path: data/flight_data/plots/neblina_flight_data.pdf
+    role: pre-existing_generated_plot
+    required: false
+  - path: data/flight_data/plots/neblina_flight_data_overview.png
+    role: pre-existing_generated_plot
+    required: false
+channels:
+  - canonical_name: time_ms
+    raw_channel_name: time_ms
+    unit: ms
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: device clock (device identity undocumented)
+    sensor_class: system_clock
+    sensor_axis: null
+    coordinate_frame: NOT_APPLICABLE
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: NOT_APPLICABLE_CLOCK
+    conversion_applied: null
+    is_timestamp_channel: true
+  - canonical_name: bmp1_rel_alt_m
+    raw_channel_name: bmp1_rel_alt_m
+    unit: m
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: BMP sensor 1 (model undocumented)
+    sensor_class: barometer
+    sensor_axis: null
+    coordinate_frame: UNKNOWN_VERTICAL_REFERENCE
+    data_type: float64
+    data_origin: DERIVED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: bmp2_rel_alt_m
+    raw_channel_name: bmp2_rel_alt_m
+    unit: m
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: BMP sensor 2 (model undocumented)
+    sensor_class: barometer
+    sensor_axis: null
+    coordinate_frame: UNKNOWN_VERTICAL_REFERENCE
+    data_type: float64
+    data_origin: DERIVED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu1_ax_g
+    raw_channel_name: mpu1_ax_g
+    unit: g
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU1 (model undocumented)
+    sensor_class: accelerometer
+    sensor_axis: x
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu1_ay_g
+    raw_channel_name: mpu1_ay_g
+    unit: g
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU1 (model undocumented)
+    sensor_class: accelerometer
+    sensor_axis: y
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu1_az_g
+    raw_channel_name: mpu1_az_g
+    unit: g
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU1 (model undocumented)
+    sensor_class: accelerometer
+    sensor_axis: z
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu1_gx_dps
+    raw_channel_name: mpu1_gx_dps
+    unit: deg/s
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU1 (model undocumented)
+    sensor_class: gyroscope
+    sensor_axis: x
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu1_gy_dps
+    raw_channel_name: mpu1_gy_dps
+    unit: deg/s
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU1 (model undocumented)
+    sensor_class: gyroscope
+    sensor_axis: y
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu1_gz_dps
+    raw_channel_name: mpu1_gz_dps
+    unit: deg/s
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU1 (model undocumented)
+    sensor_class: gyroscope
+    sensor_axis: z
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu2_ax_g
+    raw_channel_name: mpu2_ax_g
+    unit: g
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU2 (model undocumented)
+    sensor_class: accelerometer
+    sensor_axis: x
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu2_ay_g
+    raw_channel_name: mpu2_ay_g
+    unit: g
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU2 (model undocumented)
+    sensor_class: accelerometer
+    sensor_axis: y
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu2_az_g
+    raw_channel_name: mpu2_az_g
+    unit: g
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU2 (model undocumented)
+    sensor_class: accelerometer
+    sensor_axis: z
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu2_gx_dps
+    raw_channel_name: mpu2_gx_dps
+    unit: deg/s
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU2 (model undocumented)
+    sensor_class: gyroscope
+    sensor_axis: x
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu2_gy_dps
+    raw_channel_name: mpu2_gy_dps
+    unit: deg/s
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU2 (model undocumented)
+    sensor_class: gyroscope
+    sensor_axis: y
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: mpu2_gz_dps
+    raw_channel_name: mpu2_gz_dps
+    unit: deg/s
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: MPU2 (model undocumented)
+    sensor_class: gyroscope
+    sensor_axis: z
+    coordinate_frame: UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: gps_lat_deg
+    raw_channel_name: gps_lat_deg
+    unit: deg
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: onboard GPS (model undocumented)
+    sensor_class: gps
+    sensor_axis: null
+    coordinate_frame: GEODETIC_DATUM_UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: gps_lon_deg
+    raw_channel_name: gps_lon_deg
+    unit: deg
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: onboard GPS (model undocumented)
+    sensor_class: gps
+    sensor_axis: null
+    coordinate_frame: GEODETIC_DATUM_UNKNOWN
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: gps_alt_m
+    raw_channel_name: gps_alt_m
+    unit: m
+    unit_status: HEADER_LABEL
+    unit_source: source_header
+    source_sensor: onboard GPS (model undocumented)
+    sensor_class: gps
+    sensor_axis: null
+    coordinate_frame: UNKNOWN_VERTICAL_REFERENCE
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false
+  - canonical_name: gps_sat
+    raw_channel_name: gps_sat
+    unit: null
+    unit_status: UNKNOWN
+    unit_source: null
+    source_sensor: onboard GPS (model undocumented)
+    sensor_class: gps
+    sensor_axis: null
+    coordinate_frame: NOT_APPLICABLE
+    data_type: float64
+    data_origin: MEASURED
+    calibration_status: UNKNOWN
+    conversion_applied: null
+    is_timestamp_channel: false

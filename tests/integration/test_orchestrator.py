@@ -30,6 +30,10 @@ def test_nominal_orchestration_mocked(tmp_path):
                 "power_off_drag": 0.5,
                 "power_on_drag": 0.5
             },
+            "drag": {
+                "power_on": {"source_type": "constant", "constant": 0.5},
+                "power_off": {"source_type": "constant", "constant": 0.5},
+            },
             "components": []
         }),
         motor=ConfigDict({

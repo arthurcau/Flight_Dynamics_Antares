@@ -4,6 +4,7 @@ pytest>=7.0
 staticmap>=0.5.7
 multiprocess
 pandas
+matplotlib>=3.8
 scikit-learn
 xarray
 reportlab>=4.0.0

@@ -7,6 +7,8 @@ future Award Brief renderers use the same calculations.
 
 from __future__ import annotations
 
+import math
+from numbers import Real
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -17,8 +19,65 @@ from scipy import stats
 PERCENTILES = (1, 5, 10, 25, 50, 75, 90, 95, 99)
 
 
+def finite_numeric_series(values: Iterable[Any], metric: str) -> np.ndarray:
+    """Return aligned finite scalars, preserving nulls as NaN and rejecting bad values."""
+    validated: list[float] = []
+    for value in values:
+        if value is None or value is pd.NA:
+            validated.append(np.nan)
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            raise ValueError(f"Metric {metric!r} contains a non-numeric value")
+        try:
+            number = float(value)
+        except OverflowError as exc:
+            raise ValueError(f"Metric {metric!r} contains a value outside finite float range") from exc
+        if math.isnan(number):
+            validated.append(np.nan)
+            continue
+        if not math.isfinite(number):
+            raise ValueError(f"Metric {metric!r} contains a non-finite value")
+        validated.append(number)
+    return np.asarray(validated, dtype=float)
+
+
+def finite_numeric_values(values: Iterable[Any], metric: str) -> np.ndarray:
+    """Return finite scalar values, preserving nulls as missing and rejecting bad types."""
+    sample = finite_numeric_series(values, metric)
+    return sample[np.isfinite(sample)]
+
+
+def summarize_finite_values(
+    values: Iterable[Any],
+    metric: str,
+    *,
+    ddof: int = 1,
+) -> tuple[int, float | None, float | None]:
+    """Compute stable mean and standard deviation without intermediate overflow."""
+    if ddof < 0:
+        raise ValueError("ddof must be non-negative")
+    sample = finite_numeric_values(values, metric)
+    count = len(sample)
+    if count == 0:
+        return count, None, None
+
+    mean = math.fsum(value / count for value in sample)
+    standard_deviation = None
+    if count > ddof:
+        scale = float(np.max(np.abs(sample)))
+        scaled_values = sample / scale if scale else sample
+        scaled_mean = math.fsum(scaled_values) / count
+        variance = math.fsum((value - scaled_mean) ** 2 for value in scaled_values) / (count - ddof)
+        standard_deviation = scale * math.sqrt(variance)
+    if not math.isfinite(mean) or (
+        standard_deviation is not None and not math.isfinite(standard_deviation)
+    ):
+        raise ValueError(f"Metric {metric!r} summary statistics overflow finite range")
+    return count, mean, standard_deviation
+
+
 def _numeric(values: Iterable[Any]) -> np.ndarray:
-    return pd.to_numeric(pd.Series(values), errors="coerce").dropna().to_numpy(dtype=float)
+    return finite_numeric_values(values, "analysis input")
 
 
 def distribution_statistics(frame: pd.DataFrame, columns: Sequence[str] | None = None) -> pd.DataFrame:
@@ -28,14 +87,21 @@ def distribution_statistics(frame: pd.DataFrame, columns: Sequence[str] | None =
     for column in columns:
         if column not in frame:
             continue
-        values = _numeric(frame[column])
-        if not len(values):
+        values = finite_numeric_values(frame[column], str(column))
+        count, mean, standard_deviation = summarize_finite_values(values, str(column))
+        if not count:
+            row: dict[str, Any] = {
+                "metric": column, "count": 0, "mean": None, "std": None,
+                "min": None, "max": None, "skewness": None, "kurtosis": None,
+            }
+            row.update({f"p{percentile:02d}": None for percentile in PERCENTILES})
+            rows.append(row)
             continue
         row: dict[str, Any] = {
             "metric": column,
-            "count": int(len(values)),
-            "mean": float(np.mean(values)),
-            "std": float(np.std(values, ddof=1)) if len(values) > 1 else 0.0,
+            "count": count,
+            "mean": mean,
+            "std": standard_deviation if standard_deviation is not None else 0.0,
             "min": float(np.min(values)),
             "max": float(np.max(values)),
             "skewness": float(stats.skew(values, bias=False)) if len(values) > 2 else np.nan,
@@ -287,6 +353,7 @@ def conditional_tail_analysis(inputs: pd.DataFrame, outputs: pd.DataFrame, metri
         if column in {"case_id", "seed"}:
             continue
         full = pd.to_numeric(numeric[column], errors="coerce")
+        full = full.where(np.isfinite(full))
         tail = full.loc[selected.to_numpy()].dropna()
         if tail.empty or full.dropna().empty:
             continue

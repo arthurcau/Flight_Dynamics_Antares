@@ -7,6 +7,8 @@ from typing import Dict, Any
 
 @dataclass
 class UncertaintyDef:
+    """One configured random variable, including its provenance fields."""
+
     name: str
     enabled: bool
     units: str
@@ -27,6 +29,8 @@ class UncertaintyDef:
         return str(self.params.get("epistemic_or_aleatory", "UNKNOWN"))
 
 class UncertaintyRegistry:
+    """Load and validate enabled uncertainty definitions from project YAML."""
+
     def __init__(self, yaml_path: Path):
         self.yaml_path = yaml_path
         self.schema_version = 1
@@ -34,6 +38,7 @@ class UncertaintyRegistry:
         self.load()
 
     def load(self):
+        """Read the uncertainty YAML and populate enabled parameter definitions."""
         with open(self.yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
             

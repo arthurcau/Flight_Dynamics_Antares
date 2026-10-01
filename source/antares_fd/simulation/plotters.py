@@ -1,4 +1,5 @@
-import json
+"""Render trajectory and Monte Carlo plots from saved simulation results."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
@@ -6,6 +7,7 @@ from pathlib import Path
 import matplotlib.backends.backend_pdf
 
 from .statistics import calculate_covariance_ellipse
+from antares_fd.storage import read_jsonl_objects
 
 def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: str, nominal_flight=None, nominal_flight_fail=None, all_flights=None, sample_flights=None):
     """
@@ -14,16 +16,10 @@ def plot_monte_carlo_dispersion(outputs_file: Path, results_dir: Path, run_id: s
     x_impact = []
     y_impact = []
     
-    with outputs_file.open('r') as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                data = json.loads(line)
-                if 'x_impact' in data and 'y_impact' in data:
-                    x_impact.append(data['x_impact'])
-                    y_impact.append(data['y_impact'])
-            except json.JSONDecodeError:
-                pass
+    for data in read_jsonl_objects(outputs_file):
+        if 'x_impact' in data and 'y_impact' in data:
+            x_impact.append(data['x_impact'])
+            y_impact.append(data['y_impact'])
                 
     if len(x_impact) < 2:
         print("[Monte Carlo] Not enough valid impact data to plot dispersion.")
@@ -770,19 +766,12 @@ def export_nominal_flight_plots(flight, results_dir: Path, project_name: str, sc
 
 
 def plot_monte_carlo_distributions(outputs_file, results_dir, run_id):
-    import json
+    """Plot selected output distributions from the scalar Monte Carlo log."""
     import numpy as np
     import matplotlib.pyplot as plt
     import pandas as pd
     
-    records = []
-    with open(outputs_file, 'r') as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+    records = read_jsonl_objects(outputs_file)
                 
     if len(records) < 2:
         return
@@ -866,19 +855,12 @@ def plot_monte_carlo_distributions(outputs_file, results_dir, run_id):
 
 
 def plot_monte_carlo_convergence(outputs_file, results_dir, run_id):
-    import json
+    """Plot running apogee and drift summaries as cases accumulate."""
     import numpy as np
     import matplotlib.pyplot as plt
     import pandas as pd
     
-    records = []
-    with open(outputs_file, 'r') as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+    records = read_jsonl_objects(outputs_file)
                 
     if len(records) < 5:
         return

@@ -5,12 +5,14 @@ Computes distributions, percentiles, and input-output correlations
 (Tornado analysis) from Monte Carlo campaigns.
 """
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+from antares_fd.analysis.uq import finite_numeric_series, summarize_finite_values
+from antares_fd.storage import read_jsonl_objects
 
 
 def analyze_monte_carlo_sensitivity(
@@ -33,15 +35,7 @@ def analyze_monte_carlo_sensitivity(
         return {}
 
     # 1. Load outputs
-    out_records: List[Dict[str, Any]] = []
-    with open(outputs_file, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                out_records.append(json.loads(line))
-            except Exception:
-                pass
+    out_records = read_jsonl_objects(outputs_file)
 
     if not out_records:
         return {}
@@ -62,15 +56,17 @@ def analyze_monte_carlo_sensitivity(
     for col in metrics_to_summarize:
         if col not in df_out.columns:
             continue
-        series = df_out[col].dropna()
+        aligned = finite_numeric_series(df_out[col], col)
+        series = aligned[np.isfinite(aligned)]
         if len(series) == 0:
             continue
+        count, mean, standard_deviation = summarize_finite_values(aligned, col)
 
         pct_dict = {f"p{p}": float(np.percentile(series, p)) for p in percentiles}
         summary_stats[col] = {
-            "count": int(len(series)),
-            "mean": float(series.mean()),
-            "std": float(series.std()),
+            "count": count,
+            "mean": float(mean),
+            "std": float(standard_deviation) if standard_deviation is not None else float("nan"),
             "min": float(series.min()),
             "max": float(series.max()),
             **pct_dict,
@@ -79,19 +75,14 @@ def analyze_monte_carlo_sensitivity(
     # 3. Sensitivity Correlation (if inputs available)
     sensitivity_ranking: List[Dict[str, Any]] = []
 
-    if inputs_file and inputs_file.exists():
-        in_records: List[Dict[str, Any]] = []
-        with open(inputs_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    in_records.append(json.loads(line))
-                except Exception:
-                    pass
-
-        if len(in_records) >= len(out_records):
-            in_records = in_records[:len(out_records)]
+    if inputs_file is not None:
+        in_records = read_jsonl_objects(inputs_file)
+        if len(in_records) != len(out_records):
+            raise ValueError(
+                "Monte Carlo input/output record counts differ: "
+                f"{len(in_records)} inputs vs {len(out_records)} outputs"
+            )
+        if in_records:
             # Flatten numeric inputs
             flat_inputs: List[Dict[str, float]] = []
             for row in in_records:
@@ -105,12 +96,15 @@ def analyze_monte_carlo_sensitivity(
             df_in = pd.DataFrame(flat_inputs)
 
             if target_metric in df_out.columns:
-                target_series = df_out[target_metric]
+                target_series = finite_numeric_series(df_out[target_metric], target_metric)
                 for param in df_in.columns:
-                    param_series = df_in[param]
-                    if param_series.std() > 1e-8:
-                        r_pearson, p_val = stats.pearsonr(param_series, target_series)
-                        r_spearman, _ = stats.spearmanr(param_series, target_series)
+                    param_series = finite_numeric_series(df_in[param], param)
+                    valid = np.isfinite(param_series) & np.isfinite(target_series)
+                    paired_x = param_series[valid]
+                    paired_y = target_series[valid]
+                    if len(paired_x) >= 3 and np.std(paired_x) > 1e-8 and np.std(paired_y) > 0:
+                        r_pearson, p_val = stats.pearsonr(paired_x, paired_y)
+                        r_spearman, _ = stats.spearmanr(paired_x, paired_y)
                         if not np.isnan(r_pearson):
                             sensitivity_ranking.append({
                                 "parameter": param,
@@ -118,6 +112,7 @@ def analyze_monte_carlo_sensitivity(
                                 "spearman_rho": float(r_spearman),
                                 "abs_correlation": float(abs(r_pearson)),
                                 "p_value": float(p_val),
+                                "sample_count": int(len(paired_x)),
                             })
 
                 sensitivity_ranking.sort(key=lambda x: x["abs_correlation"], reverse=True)

@@ -2,8 +2,9 @@
 ANTARES FLIGHT DYNAMICS
 Unified Campaign Runner - Neblina 1.
 
-Executes all flight simulation scenarios in this folder (deterministic + Monte Carlo)
-and generates a single, consolidated results directory with a single master engineering PDF report.
+The shared campaign runner selects declared entry points, executes the
+deterministic cases before Monte Carlo, and collects their artifacts under one
+results directory. Review notes by Cau.
 """
 import sys
 from pathlib import Path
@@ -20,6 +21,7 @@ from antares_fd.simulation.campaign import run_project_campaign
 
 
 def main():
+    """Start one consolidated campaign for the Neblina 1 simulations folder."""
     simulations_dir = Path(__file__).resolve().parent
     run_project_campaign(simulations_dir)
 

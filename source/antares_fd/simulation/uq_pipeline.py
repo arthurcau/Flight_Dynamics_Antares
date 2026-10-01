@@ -28,23 +28,24 @@ from antares_fd.simulation.uq_campaign import MonteCarloCampaign
 from antares_fd.simulation.uncertainty import UncertaintyRegistry
 from antares_fd.simulation.uq_storage import write_json_atomic, write_parquet_atomic
 from antares_fd.simulation.uq_storage import directory_size
+from antares_fd.simulation.case_ids import canonicalize_case_records
+from antares_fd.storage import read_jsonl_objects
 
 
 def _read_json_lines(path: Path) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    if not path.exists():
-        return records
-    with path.open("r", encoding="utf-8") as stream:
-        for line in stream:
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if isinstance(record, dict):
-                records.append(record)
-    return records
+    return read_jsonl_objects(path, missing_ok=True)
+
+
+def _sample_case_ids(samples: pd.DataFrame | None) -> set[int] | None:
+    if samples is None or "case_id" not in samples:
+        return None
+    canonical_samples = canonicalize_case_records(
+        samples[["case_id"]].to_dict("records"), context="Monte Carlo sample table",
+    )
+    case_ids = {record["case_id"] for record in canonical_samples}
+    if len(case_ids) != len(samples):
+        raise ValueError("sample table must contain unique case IDs")
+    return case_ids
 
 
 def _uncertainty_frame(registry_path: Path) -> pd.DataFrame:
@@ -72,17 +73,31 @@ def _uncertainty_frame(registry_path: Path) -> pd.DataFrame:
 
 
 def _output_frame(records: list[dict[str, Any]], samples: pd.DataFrame | None, scenario_id: str | None = None) -> pd.DataFrame:
-    frame = pd.DataFrame(records)
+    if not records:
+        return pd.DataFrame()
+    allowed_case_ids = _sample_case_ids(samples)
+    normalized_records = canonicalize_case_records(
+        records, allowed_case_ids=allowed_case_ids, context="Monte Carlo outputs",
+    )
+    for row_number, record in enumerate(normalized_records, start=1):
+        for column, value in record.items():
+            if column in {"index", "case_id", "scenario_id"} or value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
+                raise ValueError(
+                    f"Monte Carlo output row {row_number} metric {column!r} is not numeric"
+                )
+            if not np.isfinite(value):
+                raise ValueError(
+                    f"Monte Carlo output row {row_number} metric {column!r} is non-finite"
+                )
+    frame = pd.DataFrame(normalized_records)
     if frame.empty:
         return frame
-    if "case_id" not in frame:
-        frame["case_id"] = frame.get("index", np.arange(len(frame)))
-        # RocketPy's exported log is one-based; the immutable Antares sample
-        # table is zero-based.  Normalize once at the artifact boundary.
-        raw_ids = pd.to_numeric(frame["case_id"], errors="coerce")
-        if len(raw_ids) and raw_ids.min() >= 1 and (samples is None or raw_ids.max() <= len(samples)):
-            frame["case_id"] = raw_ids - 1
-    frame["case_id"] = pd.to_numeric(frame["case_id"], errors="coerce").astype("Int64")
+    frame["case_id"] = pd.to_numeric(frame["case_id"], errors="raise").astype("Int64")
+    for column in frame.columns:
+        if column not in {"case_id", "index", "scenario_id"}:
+            frame[column] = pd.to_numeric(frame[column], errors="raise")
     aliases = {
         "apogee_time": "apogee_time", "x_impact": "landing_east",
         "y_impact": "landing_north", "impact_velocity": "touchdown_velocity",
@@ -101,14 +116,34 @@ def _output_frame(records: list[dict[str, Any]], samples: pd.DataFrame | None, s
     # The previous alias copied ASL into an AGL column, creating an apparent
     # ~495 m nominal/Monte-Carlo discrepancy.
     if "apogee" in frame:
-        elevation = pd.Series(0.0, index=frame.index)
-        if samples is not None and "site_elevation" in samples:
-            elevation = pd.to_numeric(samples.set_index("case_id")["site_elevation"], errors="coerce").reindex(frame["case_id"].tolist()).reset_index(drop=True)
-            elevation.index = frame.index
-        elif "rocketpy_elevation" in frame:
-            elevation = pd.to_numeric(frame["rocketpy_elevation"], errors="coerce").fillna(0.0)
         frame["apogee_asl"] = pd.to_numeric(frame["apogee"], errors="coerce")
-        frame["apogee_agl"] = frame["apogee_asl"] - elevation.fillna(0.0)
+        valid_apogee = frame["apogee_asl"].notna()
+        if valid_apogee.any():
+            elevation = None
+            elevation_source = None
+            if samples is not None and "rocketpy_elevation" in samples:
+                actual_elevation = pd.to_numeric(
+                    samples.set_index("case_id")["rocketpy_elevation"], errors="coerce",
+                ).reindex(frame["case_id"].tolist()).reset_index(drop=True)
+                actual_elevation.index = frame.index
+                elevation = actual_elevation
+                elevation_source = "ROCKETPY_LOGGED_ELEVATION"
+            elif "rocketpy_elevation" in frame:
+                elevation = pd.to_numeric(frame["rocketpy_elevation"], errors="coerce")
+                elevation_source = "ROCKETPY_LOGGED_ELEVATION"
+            elif samples is not None and "site_elevation" in samples:
+                elevation = pd.to_numeric(
+                    samples.set_index("case_id")["site_elevation"], errors="coerce",
+                ).reindex(frame["case_id"].tolist()).reset_index(drop=True)
+                elevation.index = frame.index
+                elevation_source = "LEGACY_DECLARED_SITE_ELEVATION"
+            if elevation is None or not np.isfinite(elevation.loc[valid_apogee].to_numpy(dtype=float)).all():
+                raise ValueError("Monte Carlo AGL apogee requires finite per-case elevation")
+            frame["apogee_agl"] = frame["apogee_asl"] - elevation
+            frame["apogee_agl_elevation_source"] = elevation_source
+        else:
+            frame["apogee_agl"] = np.nan
+            frame["apogee_agl_elevation_source"] = "NOT_APPLICABLE_NO_APOGEE"
     if "max_acceleration" in frame and "max_total_acceleration" not in frame:
         frame["max_total_acceleration"] = pd.to_numeric(frame["max_acceleration"], errors="coerce") / 9.80665
     if "landing_east" in frame and "landing_north" in frame:
@@ -126,6 +161,7 @@ def _output_frame(records: list[dict[str, Any]], samples: pd.DataFrame | None, s
 
 def _input_frame(samples: pd.DataFrame, records: list[dict[str, Any]] | None) -> pd.DataFrame:
     """Combine declared samples with the exact scalar values RocketPy used."""
+    allowed_case_ids = _sample_case_ids(samples)
     if not records:
         return samples
     normalized_records = []
@@ -135,15 +171,15 @@ def _input_frame(samples: pd.DataFrame, records: list[dict[str, Any]] | None) ->
             if isinstance(value, (dict, list, tuple)) else value
             for key, value in record.items()
         })
+    normalized_records = canonicalize_case_records(
+        normalized_records,
+        allowed_case_ids=allowed_case_ids,
+        context="RocketPy input records",
+    )
     actual = pd.DataFrame(normalized_records)
     if actual.empty:
         return samples
-    if "case_id" not in actual:
-        actual["case_id"] = actual.get("index", np.arange(len(actual)))
-        raw_ids = pd.to_numeric(actual["case_id"], errors="coerce")
-        if len(raw_ids) and raw_ids.min() >= 1 and (samples.empty or raw_ids.max() <= len(samples)):
-            actual["case_id"] = raw_ids - 1
-    actual["case_id"] = pd.to_numeric(actual["case_id"], errors="coerce").astype("Int64")
+    actual["case_id"] = pd.to_numeric(actual["case_id"], errors="raise").astype("Int64")
     actual = actual.rename(columns={column: f"rocketpy_{column}" for column in actual.columns if column != "case_id"})
     if samples.empty:
         return actual
@@ -185,6 +221,8 @@ def _representative_cases(frame: pd.DataFrame) -> pd.DataFrame:
     for percentile in (5, 50, 95):
         if "apogee_agl" in frame:
             values = pd.to_numeric(frame["apogee_agl"], errors="coerce")
+            if not values.notna().any():
+                continue
             target = float(np.percentile(values.dropna(), percentile))
             index = (values - target).abs().idxmin()
             selections.append({"selection": f"apogee_p{percentile:02d}", "case_id": int(frame.loc[index, "case_id"]), "metric": "apogee_agl", "value": float(values.loc[index])})
@@ -216,7 +254,7 @@ def finalize_campaign_analysis(
 
     failures = pd.DataFrame(failure_records or [])
     write_parquet_atomic(failures, campaign.path / "failures.parquet")
-    statistic_columns = [column for column in outputs.select_dtypes(include="number").columns if column not in {"case_id", "seed"}]
+    statistic_columns = [column for column in outputs.select_dtypes(include="number").columns if column not in {"case_id", "index", "seed"}]
     statistics = distribution_statistics(outputs, columns=statistic_columns)
     write_parquet_atomic(statistics, campaign.path / "statistics.parquet")
 
@@ -301,8 +339,12 @@ def finalize_campaign_analysis(
         values = pd.to_numeric(outputs[metric], errors="coerce").dropna()
         for percentile in (1, 5, 10, 25, 50, 75, 90, 95, 99):
             quantile = percentile / 100.0
-            low, high = quantile_confidence_interval(values, quantile)
-            confidence_rows.append({"metric": metric, "quantile": percentile, "sample_count": len(values), "estimate": float(np.percentile(values, percentile)), "ci_low": low, "ci_high": high, "method": "exact binomial order-statistics interval"})
+            if len(values):
+                low, high = quantile_confidence_interval(values, quantile)
+                estimate = float(np.percentile(values, percentile))
+            else:
+                low, high, estimate = None, None, None
+            confidence_rows.append({"metric": metric, "quantile": percentile, "sample_count": len(values), "estimate": estimate, "ci_low": low, "ci_high": high, "method": "exact binomial order-statistics interval"})
     confidence = pd.DataFrame(confidence_rows)
     # ``quantile_confidence.parquet`` is the canonical artifact name.  Keep
     # ``confidence.parquet`` as a compatibility alias for older consumers.
@@ -355,7 +397,14 @@ def finalize_campaign_analysis(
     if not statistics.empty:
         apogee = statistics[statistics["metric"] == "apogee_agl"]
         if not apogee.empty:
-            summary["apogee"] = {key: float(apogee.iloc[0][key]) for key in ("p05", "p50", "p95") if key in apogee}
+                summary["apogee"] = {
+                    key: (
+                        float(apogee.iloc[0][key])
+                        if key in apogee and pd.notna(apogee.iloc[0][key])
+                        else None
+                    )
+                    for key in ("p05", "p50", "p95")
+                }
     _write_plot_artifacts(campaign.path / "plots", outputs, convergence, sensitivity, compliance)
     write_json_atomic({
         "campaign_id": campaign.campaign_id,

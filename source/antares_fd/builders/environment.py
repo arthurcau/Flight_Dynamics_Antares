@@ -74,12 +74,14 @@ def _apply_profile(env, profile):
                          ("wind_velocity_x", profile.wind_u_mps), ("wind_velocity_y", profile.wind_v_mps)):
         setattr(env, name, Function(ProfileVariable(z.copy(), np.asarray(values).copy()), inputs="Height ASL (m)"))
     env.calculate_density_profile()
+    env.antares_specific_humidity_kg_kg = None
     if profile.specific_humidity_kg_kg is not None:
         from MAGI.casper import CasperPhysics
         q = Function(ProfileVariable(z.copy(), profile.specific_humidity_kg_kg.copy()))
         # Preserve actual temperature for sound speed/viscosity. Correct only
         # density through the ideal moist-air equation, without replacing T by Tv.
         env.density = env.pressure / (CasperPhysics.R_AIR * env.temperature * (1 + (1 / CasperPhysics.EPSILON - 1) * q))
+        env.antares_specific_humidity_kg_kg = np.asarray(profile.specific_humidity_kg_kg, dtype=float).copy()
     env.calculate_speed_of_sound_profile()
     env.calculate_dynamic_viscosity()
     env.max_expected_height = float(z[-1])

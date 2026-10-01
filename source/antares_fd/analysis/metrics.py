@@ -212,81 +212,46 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     sm_max_burn = float(np.max(ts_sm[burn_mask])) if np.any(burn_mask) else ts_sm[0]
     max_sm = float(np.max(ts_sm))
 
-    # Coordinate field verification logic
+    # Field validation requires source, date, datum and uncertainty for a
+    # measured landing location. The former project-specific constants had no
+    # traceable evidence, so no simulated landing is labeled validated here.
     validation = None
-    if project_dir and "neblina_1" in str(project_dir):
-        lat_nose = -21.9438267
-        lon_nose = -48.9602672
-        lat_fuse = -21.943290
-        lon_fuse = -48.960191
-        lat_pad = float(env.latitude)
-        lon_pad = float(env.longitude)
-        r_earth = 6378137.0
-        
-        x_nose = float(np.radians(lon_nose - lon_pad) * r_earth * np.cos(np.radians(lat_pad)))
-        y_nose = float(np.radians(lat_nose - lat_pad) * r_earth)
-        x_fuse = float(np.radians(lon_fuse - lon_pad) * r_earth * np.cos(np.radians(lat_pad)))
-        y_fuse = float(np.radians(lat_fuse - lat_pad) * r_earth)
-        
-        validation = {
-            "has_field_data": True,
-            "pad": {"lat": lat_pad, "lon": lon_pad},
-            "predicted": {
-                "x": landing_east,
-                "y": landing_north,
-                "dist": drift_final,
-                "azimuth_deg": landing_azimuth,
-            },
-            "nose_cone": {
-                "lat": lat_nose,
-                "lon": lon_nose,
-                "x": x_nose,
-                "y": y_nose,
-                "dist": float(np.hypot(x_nose, y_nose)),
-                "azimuth_deg": float(np.degrees(np.arctan2(x_nose, y_nose)) % 360),
-                "err_radial_m": float(np.hypot(x_nose, y_nose) - drift_final),
-                "err_x_m": float(x_nose - landing_east),
-                "err_y_m": float(y_nose - landing_north),
-            },
-            "fuselage": {
-                "lat": lat_fuse,
-                "lon": lon_fuse,
-                "x": x_fuse,
-                "y": y_fuse,
-                "dist": float(np.hypot(x_fuse, y_fuse)),
-                "azimuth_deg": float(np.degrees(np.arctan2(x_fuse, y_fuse)) % 360),
-                "err_radial_m": float(np.hypot(x_fuse, y_fuse) - drift_final),
-                "err_x_m": float(x_fuse - landing_east),
-                "err_y_m": float(y_fuse - landing_north),
-            }
-        }
 
-    
     # Atmosphere Extraction
     z_max = apogee_asl if apogee_asl > elev else 4000.0
-    z_eval_env = np.linspace(elev, z_max * 1.1, 250)
+    requested_upper_asl = z_max * 1.1
+    atmosphere_meta = getattr(env, "antares_atmosphere", {})
+    bounds = atmosphere_meta.get("altitude_bounds_asl_m") if isinstance(atmosphere_meta, dict) else None
+    if bounds is None:
+        source_altitude = getattr(getattr(getattr(env, "pressure", None), "source", None), "altitude", None)
+        if source_altitude is not None:
+            source_altitude = np.asarray(source_altitude, dtype=float)
+            if source_altitude.ndim == 1 and len(source_altitude) >= 2:
+                bounds = [float(source_altitude[0]), float(source_altitude[-1])]
+    lower_asl = max(elev, float(bounds[0])) if bounds is not None else elev
+    upper_asl = min(requested_upper_asl, float(bounds[1])) if bounds is not None else requested_upper_asl
+    if not np.isfinite([lower_asl, upper_asl]).all() or upper_asl <= lower_asl:
+        raise ValueError("Atmospheric profile does not cover a usable altitude range for reporting")
+    coverage_status = (
+        "PROFILE_LIMITED_TO_DECLARED_COVERAGE"
+        if bounds is not None and (lower_asl > elev or upper_asl < requested_upper_asl)
+        else "COMPLETE_WITHIN_REQUESTED_RANGE"
+    )
+    z_eval_env = np.linspace(lower_asl, upper_asl, 250)
     z_agl_env = z_eval_env - elev
     
     env_u, env_v = [], []
     env_spd, env_dir = [], []
     env_rho, env_sos = [], []
     for tz in z_eval_env:
-        try:
-            wx = float(env.wind_velocity_x(tz))
-            wy = float(env.wind_velocity_y(tz))
-            env_u.append(wx)
-            env_v.append(wy)
-            env_spd.append(np.hypot(wx, wy))
-            env_dir.append(np.degrees(np.arctan2(wx, wy)) % 360)
-            env_rho.append(float(env.density(tz)))
-            env_sos.append(float(env.speed_of_sound(tz)))
-        except:
-            env_u.append(0.0)
-            env_v.append(0.0)
-            env_spd.append(0.0)
-            env_dir.append(0.0)
-            env_rho.append(1.2)
-            env_sos.append(340.0)
+        wx = float(env.wind_velocity_x(tz))
+        wy = float(env.wind_velocity_y(tz))
+        env_u.append(wx)
+        env_v.append(wy)
+        env_spd.append(np.hypot(wx, wy))
+        env_dir.append(np.degrees(np.arctan2(wx, wy)) % 360)
+        env_rho.append(float(env.density(tz)))
+        env_sos.append(float(env.speed_of_sound(tz)))
 
     atm_prof = AtmosphereProfile(
         altitude_agl=z_agl_env,
@@ -295,7 +260,9 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
         wind_speed=np.array(env_spd),
         wind_direction=np.array(env_dir),
         density=np.array(env_rho),
-        speed_of_sound=np.array(env_sos)
+        speed_of_sound=np.array(env_sos),
+        coverage_status=coverage_status,
+        coverage_bounds_asl_m=tuple(map(float, bounds)) if bounds is not None else None,
     )
 
     return FlightMetrics(

@@ -2,6 +2,8 @@
 import shutil
 import sys
 import tempfile
+import json
+import os
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
@@ -49,6 +51,7 @@ class FailureCampaignTests(unittest.TestCase):
     def test_parallel_campaign_exports_results_and_trajectories(self):
         mc = execute_monte_carlo(self.config, self.project)
         self.assertEqual(len(mc.outputs_log), 2)
+        self.assertEqual({row["index"] for row in mc.outputs_log}, {0, 1})
         self.assertEqual(self.manifest()["run"]["status"], "completed")
         trajectories = self.dispersion.call_args.kwargs["all_flights"]
         self.assertIsInstance(trajectories, list)
@@ -60,11 +63,39 @@ class FailureCampaignTests(unittest.TestCase):
         self.assertEqual(len(self.dispersion.call_args.kwargs["sample_flights"]), 2)
 
     def test_silent_worker_failure_is_reported(self):
-        with patch("antares_fd.simulation.monte_carlo_failure.MonteCarlo.simulate"):
+        with patch.dict(os.environ, {"ANTARES_MC_WORKERS": "1"}), patch(
+            "antares_fd.simulation.monte_carlo_failure.MonteCarlo.simulate"
+        ):
             with self.assertRaisesRegex(RuntimeError, "0/2 simulations exported"):
                 execute_monte_carlo(self.config, self.project)
         self.assertEqual(self.manifest()["run"]["status"], "failed")
         self.dispersion.assert_not_called()
+
+    def test_campaign_mode_writes_terminal_canonical_scenario_manifest(self):
+        campaign_id = "campaign_manifest_contract"
+        campaign_dir = self.results / campaign_id
+        environment = {
+            "ANTARES_CAMPAIGN_DIR": str(campaign_dir),
+            "ANTARES_CAMPAIGN_ACTIVE": "1",
+            "ANTARES_CAMPAIGN_RUN_ID": campaign_id,
+            "ANTARES_COMPACT_OUTPUTS": "1",
+            "ANTARES_MC_SCENARIO": "nominal",
+            "ANTARES_MC_TARGET": "1",
+            "ANTARES_MC_PROFILE": "debug",
+            "ANTARES_MC_WORKERS": "1",
+            "ANTARES_MC_MAX": "1",
+        }
+        with patch.dict(os.environ, environment):
+            mc = execute_monte_carlo(self.config, self.project)
+
+        manifest_path = campaign_dir / "scenarios" / "nominal" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(mc.outputs_log), 1)
+        self.assertEqual(mc.outputs_log[0]["case_id"], 0)
+        self.assertEqual(mc.outputs_log[0]["index"], 0)
+        self.assertIn(manifest["status"], {"COMPLETE", "COMPLETE_NOT_CONVERGED"})
+        self.assertEqual(manifest["successful_samples"], 1)
+        self.assertEqual(manifest["failed_samples"], 0)
 
     def test_compact_export_preserves_flight_metrics_and_trajectory_points(self):
         # Identical physical inputs isolate storage from random sampling.
@@ -86,7 +117,7 @@ class FailureCampaignTests(unittest.TestCase):
             def simulate(mc, **kwargs):
                 kwargs.update(parallel=False, include_function_data=full)
                 return original_simulate(mc, **kwargs)
-            with patch.object(MonteCarlo, "simulate", simulate):
+            with patch.dict(os.environ, {"ANTARES_MC_WORKERS": "1"}), patch.object(MonteCarlo, "simulate", simulate):
                 campaigns.append(execute_monte_carlo(self.config, project))
                 trajectories.append(self.dispersion.call_args.kwargs["all_flights"][0])
         self.assertEqual(campaigns[0].outputs_log, campaigns[1].outputs_log)

@@ -1,3 +1,5 @@
+"""Statistical geometry helpers used by flight-dispersion plots."""
+
 import numpy as np
 from scipy.stats import chi2
 

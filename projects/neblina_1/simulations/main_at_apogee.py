@@ -1,4 +1,8 @@
-"""Run the canonical main_at_apogee scenario using this project's YAML data."""
+"""Run the main-at-apogee recovery scenario from the project configuration.
+
+The shared scenario registry disables the drogue and triggers the main at
+apogee. Review notes by Cau.
+"""
 from pathlib import Path
 import sys
 
@@ -10,6 +14,7 @@ from antares_fd.simulation import execute_scenario
 
 
 def main():
+    """Load Neblina 1 inputs and run the main-at-apogee scenario."""
     return execute_scenario(load_project_config(PROJECT_DIR), PROJECT_DIR, scenario_id="main_at_apogee")
 
 

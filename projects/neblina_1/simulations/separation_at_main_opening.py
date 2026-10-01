@@ -1,11 +1,15 @@
 """
 ANTARES FLIGHT DYNAMICS
-Separation at Main Opening Simulation
+Simplified mass-change example associated with main deployment.
+
+This script subtracts an assumed 2 kg before the entire simulated flight; it
+does not model a timed separation at main opening and is excluded from the
+campaign runner. Review notes by Cau.
 """
 import sys
 from pathlib import Path
 
-# Ensures the core 'Source' package can be imported
+# Allow direct execution from a source checkout without an editable install.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SOURCE_DIR = PROJECT_ROOT / "source"
 if str(SOURCE_DIR) not in sys.path:
@@ -16,16 +20,14 @@ from antares_fd.config import load_project_config
 from antares_fd.simulation import execute_scenario
 
 def main():
+    """Run the nominal flight after applying the illustrative 2 kg mass reduction."""
     PROJECT_DIR = Path(__file__).resolve().parents[1]
     
     # 1. Load configuration
     config = load_project_config(PROJECT_DIR)
     
-    # 2. SCENARIO OVERRIDES: 
-    # For this simplified scenario, we simulate the booster section's descent 
-    # by subtracting the mass of the separated forward section (e.g., nosecone).
-    
-    # Assume 2.0 kg is separated at main parachute deployment
+    # This changes mass from ignition onward; it is not a deployment-time event.
+    # Keep the assumed value visible until a measured separation mass is available.
     separated_mass = 2.0 
     original_mass = config.vehicle["mass_properties"]["mass_without_motor"]
     

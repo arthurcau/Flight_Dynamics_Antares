@@ -14,10 +14,10 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import numpy as np
 import pandas as pd
-import json
 
 from .theme import setup_matplotlib_theme, save_figure
 from antares_fd.simulation.statistics import calculate_covariance_ellipse
+from antares_fd.storage import read_jsonl_objects
 
 
 def _get_flight_events(flight: Any) -> List[tuple[float, str]]:
@@ -618,16 +618,10 @@ def generate_mc_dispersion_chart(outputs_file: Path, output_path: Path, run_id: 
         return None
 
     x_impact, y_impact = [], []
-    with open(outputs_file, "r") as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                data = json.loads(line)
-                if "x_impact" in data and "y_impact" in data:
-                    x_impact.append(data["x_impact"])
-                    y_impact.append(data["y_impact"])
-            except Exception:
-                pass
+    for data in read_jsonl_objects(outputs_file):
+        if "x_impact" in data and "y_impact" in data:
+            x_impact.append(data["x_impact"])
+            y_impact.append(data["y_impact"])
 
     if len(x_impact) < 5:
         return None
@@ -687,14 +681,7 @@ def generate_mc_distributions_chart(outputs_file: Path, output_path: Path) -> Op
     if not outputs_file.exists():
         return None
 
-    records = []
-    with open(outputs_file, "r") as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                records.append(json.loads(line))
-            except Exception:
-                pass
+    records = read_jsonl_objects(outputs_file)
 
     if len(records) < 5:
         return None
@@ -763,14 +750,7 @@ def generate_mc_convergence_chart(outputs_file: Path, output_path: Path) -> Opti
     if not outputs_file.exists():
         return None
 
-    records = []
-    with open(outputs_file, "r") as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                records.append(json.loads(line))
-            except Exception:
-                pass
+    records = read_jsonl_objects(outputs_file)
 
     if len(records) < 10:
         return None

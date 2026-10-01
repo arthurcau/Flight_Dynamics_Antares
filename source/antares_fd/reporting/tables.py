@@ -3,7 +3,6 @@ ReportLab Table Formatters for Antares Engineering Reports.
 """
 
 from typing import Any, Dict, List, Optional
-import json
 import numpy as np
 from pathlib import Path
 from reportlab.lib import colors
@@ -13,6 +12,8 @@ import yaml
 import pandas as pd
 
 from antares_fd.analysis.flight_metrics import FlightMetrics
+from antares_fd.analysis.uq import finite_numeric_values, summarize_finite_values
+from antares_fd.storage import read_jsonl_objects
 from .theme import (
     NAVY_PRIMARY, BLUE_ACCENT, BG_LIGHT, TEXT_DARK,
     STATUS_PASS, STATUS_WARN, STATUS_FAIL, STATUS_INFO
@@ -211,72 +212,54 @@ def build_mc_input_table(project_dir: Path, styles: Any) -> Table:
     return create_standard_table(data)
 
 def build_mc_output_table(outputs_file: Path) -> Table:
-    data = [["Variable", "Mean", "Std", "P05", "P50", "P95"]]
+    data = [["Variable", "N", "Mean", "Std", "P05", "P50", "P95"]]
     
     if not outputs_file.exists():
-        data.append(["File Missing", "-", "-", "-", "-", "-"])
+        data.append(["File Missing", "-", "-", "-", "-", "-", "-"])
         return create_standard_table(data)
         
-    records = []
-    try:
-        if outputs_file.suffix.lower() == ".parquet":
-            for row in pd.read_parquet(outputs_file).to_dict("records"):
-                records.append({
-                    "apogee": row.get("apogee", row.get("apogee_agl", 0.0)),
-                    "out_of_rail_velocity": row.get("out_of_rail_velocity", row.get("rail_exit_velocity", 0.0)),
-                    "max_mach_number": row.get("max_mach_number", row.get("max_mach", 0.0)),
-                    "max_dynamic_pressure": row.get("max_dynamic_pressure", 0.0),
-                    "x_impact": row.get("x_impact", row.get("landing_east", 0.0)),
-                    "y_impact": row.get("y_impact", row.get("landing_north", 0.0)),
-                    "impact_velocity": row.get("impact_velocity", row.get("touchdown_velocity", 0.0)),
-                    "t_final": row.get("t_final", row.get("flight_duration", 0.0)),
-                })
-        else:
-            with open(outputs_file, "r") as f:
-                for line in f:
-                    if not line.strip(): continue
-                    try:
-                        records.append(json.loads(line))
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+    if outputs_file.suffix.lower() == ".parquet":
+        records = pd.read_parquet(outputs_file).to_dict("records")
+    else:
+        records = read_jsonl_objects(outputs_file)
         
     if not records:
-        data.append(["No Records", "-", "-", "-", "-", "-"])
+        data.append(["No Records", "-", "-", "-", "-", "-", "-"])
         return create_standard_table(data)
         
-    var_map = {
-        "apogee": ("Apogee AGL (m)", lambda r: r.get("apogee", 0.0)),
-        "rail_exit": ("Rail Exit Vel (m/s)", lambda r: r.get("out_of_rail_velocity", 0.0)),
-        "max_mach": ("Max Mach (M)", lambda r: r.get("max_mach_number", 0.0)),
-        "max_q": ("Max-Q (kPa)", lambda r: r.get("max_dynamic_pressure", 0.0)/1000.0),
-        "landing_east": ("Landing X (m)", lambda r: r.get("x_impact", 0.0)),
-        "landing_north": ("Landing Y (m)", lambda r: r.get("y_impact", 0.0)),
-        "v_impact": ("Touchdown (m/s)", lambda r: r.get("impact_velocity", 0.0)),
-        "t_final": ("Flight Time (s)", lambda r: r.get("t_final", 0.0))
-    }
-    
-    def _pct(arr, p):
-        return np.percentile(arr, p) if len(arr) > 0 else 0.0
-        
-    for k, (label, extractor) in var_map.items():
-        arr = np.array([extractor(r) for r in records])
-        if len(arr) == 0: continue
-        
-        mean = np.mean(arr)
-        std = np.std(arr)
-        p05 = _pct(arr, 5)
-        p50 = _pct(arr, 50)
-        p95 = _pct(arr, 95)
-        
+    metric_definitions = (
+        ("Apogee AGL (m)", ("apogee", "apogee_agl"), 1.0),
+        ("Rail Exit Vel (m/s)", ("out_of_rail_velocity", "rail_exit_velocity"), 1.0),
+        ("Max Mach (M)", ("max_mach_number", "max_mach"), 1.0),
+        ("Max-Q (kPa)", ("max_dynamic_pressure",), 0.001),
+        ("Landing X (m)", ("x_impact", "landing_east"), 1.0),
+        ("Landing Y (m)", ("y_impact", "landing_north"), 1.0),
+        ("Touchdown (m/s)", ("impact_velocity", "touchdown_velocity"), 1.0),
+        ("Flight Time (s)", ("t_final", "flight_duration"), 1.0),
+    )
+    for label, keys, scale in metric_definitions:
+        raw_values = [
+            next((record[key] for key in keys if key in record), None)
+            for record in records
+        ]
+        values = finite_numeric_values(raw_values, label) * scale
+        count, mean, standard_deviation = summarize_finite_values(values, label, ddof=1)
+        if count:
+            percentiles = np.percentile(values, [5, 50, 95])
+            if not np.isfinite(percentiles).all():
+                raise ValueError(f"Metric {label!r} percentile calculation overflowed finite range")
+            mean_text = f"{mean:.2f}" if mean is not None else "N/A"
+            std_text = f"{standard_deviation:.2f}" if standard_deviation is not None else "N/A"
+            percentile_text = [f"{value:.2f}" for value in percentiles]
+        else:
+            mean_text = std_text = "N/A"
+            percentile_text = ["N/A", "N/A", "N/A"]
         data.append([
             label,
-            f"{mean:.2f}",
-            f"{std:.2f}",
-            f"{p05:.2f}",
-            f"{p50:.2f}",
-            f"{p95:.2f}"
+            str(count),
+            mean_text,
+            std_text,
+            *percentile_text,
         ])
 
     return create_standard_table(data)

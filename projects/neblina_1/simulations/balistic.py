@@ -1,4 +1,8 @@
-"""Run the canonical ballistic scenario using this project's YAML data."""
+"""Run the canonical ballistic scenario using this project's YAML data.
+
+The filename keeps a historical misspelling; the campaign runner maps it to
+the canonical ``ballistic`` scenario ID. Review notes by Cau.
+"""
 from pathlib import Path
 import sys
 
@@ -10,6 +14,7 @@ from antares_fd.simulation import execute_scenario
 
 
 def main():
+    """Load Neblina 1 inputs and run the ballistic scenario."""
     return execute_scenario(load_project_config(PROJECT_DIR), PROJECT_DIR, scenario_id="ballistic")
 
 

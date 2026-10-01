@@ -3,7 +3,7 @@
 
 MAGI is an advanced atmospheric and thermodynamic modeling tool designed to provide highly accurate, altitude-dependent meteorological parameters and probabilistic uncertainty profiles for engineering, aerospace, and environmental applications.
 
-MAGI is strictly divided into three complementary, independent Python subsystems. The Jupyter Notebook (`MAGI_App.ipynb`) serves only as an orchestration and visualization frontend. All internal atmospheric data traverses the subsystems mapped to a rigid universal schema (`MagiSchema`).
+MAGI is strictly divided into three complementary, independent Python subsystems. The Python script [`MAGI_App.py`](MAGI_App.py) serves as the orchestration and visualization frontend. The historical notebook was removed; its relationship to the current script is documented in the [notebook and script catalog](../docs/CATALOGO_NOTEBOOKS_E_SCRIPTS.md). All internal atmospheric data traverses the subsystems mapped to a rigid universal schema (`MagiSchema`).
 
 ---
 

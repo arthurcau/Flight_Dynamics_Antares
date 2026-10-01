@@ -1,3 +1,9 @@
+"""Run failure-aware campaigns from a frozen population of stochastic cases.
+
+Samples receive stable case IDs before RocketPy runs. Successful outputs,
+failed cases, and scenario metadata remain separate campaign records.
+"""
+
 import datetime
 import json
 from pathlib import Path
@@ -13,10 +19,16 @@ import pandas as pd
 
 from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
 from antares_fd.config.exceptions import ConfigurationError
-from antares_fd.simulation.monte_carlo_storage import CampaignManager
+from antares_fd.simulation.monte_carlo_storage import CampaignManager, TrajectoryStore
 from antares_fd.simulation.monte_carlo_parameters import launch_angle_distribution
 from antares_fd.simulation.uncertainty import UncertaintyRegistry, SamplingPlan
 from antares_fd.simulation.uq_campaign import MonteCarloCampaign
+from antares_fd.simulation.case_ids import (
+    canonicalize_case_records,
+    completed_prefix_length,
+    normalize_case_id,
+)
+from antares_fd.simulation.monte_carlo_resume import restore_jsonl_case_logs
 from antares_fd.simulation.uq_pipeline import finalize_campaign_analysis
 from antares_fd.simulation.scenarios import apply_scenario, SCENARIOS, NOMINAL
 
@@ -50,8 +62,12 @@ def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_ev
             self.flight._set_stochastic(case_seed)
             self._antares_active_case_seed = case_seed
             flight = self._MonteCarlo__run_single_simulation()
-            inputs_json = self._MonteCarlo__evaluate_flight_inputs(sim_idx)
-            outputs_json = self._MonteCarlo__evaluate_flight_outputs(flight, sim_idx)
+            inputs_json = _explicit_case_id_json(
+                self._MonteCarlo__evaluate_flight_inputs(sim_idx), sim_idx,
+            )
+            outputs_json = _explicit_case_id_json(
+                self._MonteCarlo__evaluate_flight_outputs(flight, sim_idx), sim_idx,
+            )
             mutex.acquire()
             try:
                 if error_event.is_set():
@@ -74,21 +90,25 @@ def _deterministic_sim_producer(self, _worker_seed, sim_monitor, mutex, error_ev
             mutex.release()
 
 
+def _explicit_case_id_json(serialized: str, case_id: int) -> str:
+    """Add the canonical ID to RocketPy's scalar JSON record."""
+    record = json.loads(serialized)
+    record["index"] = int(case_id)
+    record["case_id"] = int(case_id)
+    return json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
 def _failure_records(mc, samples, requested):
     """Represent every missing case explicitly in the canonical failure table."""
-    successful = {
-        (int(record.get("index", record.get("case_id"))) - 1
-         if int(record.get("index", record.get("case_id"))) >= 1
-         and int(record.get("index", record.get("case_id"))) <= int(requested)
-         else int(record.get("index", record.get("case_id"))))
-        for record in getattr(mc, "outputs_log", [])
-        if isinstance(record, dict) and record.get("index", record.get("case_id")) is not None
-    }
+    successful_records = canonicalize_case_records(
+        getattr(mc, "outputs_log", []),
+        allowed_case_ids=set(range(int(requested))),
+        context="Monte Carlo successful outputs",
+    )
+    successful_ids = {record["case_id"] for record in successful_records}
     seed_by_case = {}
     if samples is not None and {"case_id", "seed"}.issubset(samples.columns):
         seed_by_case = samples.set_index("case_id")["seed"].to_dict()
-    if successful:
-        requested = max(int(requested), max(successful) + 1)
     return [
         {
             "case_id": case_id,
@@ -100,14 +120,15 @@ def _failure_records(mc, samples, requested):
             "status": "FAILED",
         }
         for case_id in range(int(requested))
-        if case_id not in successful
+        if case_id not in successful_ids
     ]
 
 def execute_monte_carlo(config, project_dir):
-    """
-    Central orchestrator for Monte Carlo campaigns.
-    Reads config.monte_carlo and the standard nominal configs to construct
-    the Stochastic inputs, then runs a full Monte Carlo campaign using RocketPy.
+    """Run a stochastic scenario while retaining failures and resume state.
+
+    The uncertainty registry creates the case population before RocketPy runs.
+    Results are paired to that population by zero-based ``case_id``; finalization
+    receives successful outputs, failures, and scenario metadata separately.
     """
     mc_cfg = config.monte_carlo if config.monte_carlo else {}
     if not mc_cfg:
@@ -314,9 +335,14 @@ def execute_monte_carlo(config, project_dir):
     manager = None
     all_flights = None
     if not compact_outputs:
-        manager = CampaignManager()
-        manager.start()
-        all_flights = manager.TrajectoryStore(seed)
+        if parallel:
+            manager = CampaignManager()
+            manager.start()
+            all_flights = manager.TrajectoryStore(seed)
+        else:
+            # Serial simulation runs in this process; a socket-backed manager
+            # adds IPC and can fail in restricted environments without helping.
+            all_flights = TrajectoryStore(seed)
     
     _orig_run_single = mc._MonteCarlo__run_single_simulation
     deterministic_seeds = None
@@ -426,38 +452,132 @@ def execute_monte_carlo(config, project_dir):
     if deterministic_seeds is not None and parallel:
         mc._MonteCarlo__sim_producer = types.MethodType(_deterministic_sim_producer, mc)
 
+    _orig_evaluate_inputs = mc._MonteCarlo__evaluate_flight_inputs
+    _orig_evaluate_outputs = mc._MonteCarlo__evaluate_flight_outputs
+    if not parallel:
+        # RocketPy's serial loop passes its incremented monitor count (1-based),
+        # while its parallel producer passes count - 1 (zero-based). Normalize
+        # serial exports here so all persisted campaign IDs share one contract.
+        def _serial_inputs(one_based_index):
+            monitor_id = normalize_case_id(one_based_index, context="RocketPy serial monitor ID")
+            if monitor_id < 1:
+                raise ValueError("RocketPy serial monitor IDs must start at one")
+            case_id = monitor_id - 1
+            return _explicit_case_id_json(
+                _orig_evaluate_inputs(one_based_index), case_id,
+            )
+
+        def _serial_outputs(flight_result, one_based_index):
+            monitor_id = normalize_case_id(one_based_index, context="RocketPy serial monitor ID")
+            if monitor_id < 1:
+                raise ValueError("RocketPy serial monitor IDs must start at one")
+            case_id = monitor_id - 1
+            return _explicit_case_id_json(
+                _orig_evaluate_outputs(flight_result, one_based_index), case_id,
+            )
+
+        mc._MonteCarlo__evaluate_flight_inputs = _serial_inputs
+        mc._MonteCarlo__evaluate_flight_outputs = _serial_outputs
+
     outputs_file_path = results_dir / "mc_sim.outputs.txt"
     canonical_outputs_path = (
         canonical_campaign.path / "outputs.parquet"
         if canonical_campaign is not None
         else None
     )
+    allowed_case_ids = set(range(num_sims))
+    if samples_df is not None and "case_id" in samples_df:
+        sample_records = samples_df[["case_id"]].to_dict("records")
+        canonical_samples = canonicalize_case_records(
+            sample_records, context="Monte Carlo sample table",
+        )
+        allowed_case_ids = {record["case_id"] for record in canonical_samples}
+        if len(allowed_case_ids) != len(samples_df):
+            raise ValueError("Monte Carlo sample table contains duplicate case IDs")
+    case_id_limit = len(allowed_case_ids)
+
+    raw_completed = restore_jsonl_case_logs(
+        mc,
+        outputs_file_path,
+        Path(mc.input_file),
+        allowed_case_ids=allowed_case_ids,
+    )
+    raw_outputs = mc.outputs_log
+    raw_inputs = mc.inputs_log
+    raw_output_ids = {record["case_id"] for record in raw_outputs}
+
+    canonical_records: list[dict[str, Any]] = []
+    canonical_ids: set[int] | None = None
     if canonical_outputs_path is not None and canonical_outputs_path.exists():
-        # The canonical Parquet table is authoritative. An interrupted
-        # RocketPy run may leave a shorter JSONL compatibility file behind;
-        # using it would duplicate valid cases or rerun cases already saved.
         cached_outputs = pd.read_parquet(canonical_outputs_path)
         if not cached_outputs.empty:
-            mc.outputs_log = cached_outputs.to_dict("records")
-            already_done = len(mc.outputs_log)
-            mc.num_of_loaded_sims = already_done
-    if already_done == 0 and outputs_file_path.exists():
-        with open(outputs_file_path, "r") as f:
-            already_done = sum(1 for line in f if line.strip())
-    if (
-        already_done == 0
-        and canonical_campaign is not None
-        and canonical_outputs_path is not None
-        and canonical_outputs_path.exists()
-    ):
-        # Finished compact campaigns intentionally remove RocketPy's JSONL
-        # compatibility files, while an interrupted run may have left empty
-        # placeholders. Rehydrate only scalar records for resume; no
-        # trajectory is reconstructed and no stochastic input is regenerated.
-        cached_outputs = pd.read_parquet(canonical_outputs_path)
-        mc.outputs_log = cached_outputs.to_dict("records")
-        already_done = len(mc.outputs_log)
-        mc.num_of_loaded_sims = already_done
+            canonical_records = canonicalize_case_records(
+                cached_outputs.to_dict("records"),
+                allowed_case_ids=allowed_case_ids,
+                context="canonical Monte Carlo output artifact",
+            )
+            canonical_ids = {record["case_id"] for record in canonical_records}
+            completed_prefix_length(canonical_ids, case_id_limit)
+
+    resume_logs_available = True
+    use_canonical_outputs = bool(canonical_ids) and not raw_outputs
+    if canonical_ids is not None and raw_output_ids:
+        common_ids = raw_output_ids & canonical_ids
+        canonical_by_id = {record["case_id"]: record for record in canonical_records}
+        raw_by_id = {record["case_id"]: record for record in raw_outputs}
+        for case_id in common_ids:
+            canonical_row = canonical_by_id[case_id]
+            raw_row = raw_by_id[case_id]
+            for field, raw_value in raw_row.items():
+                if field not in canonical_row:
+                    raise ValueError(
+                        f"canonical Monte Carlo outputs omit RocketPy field {field!r}"
+                    )
+                canonical_value = canonical_row[field]
+                raw_missing = raw_value is None or bool(pd.isna(raw_value))
+                canonical_missing = canonical_value is None or bool(pd.isna(canonical_value))
+                values_match = (
+                    raw_missing and canonical_missing
+                    or not raw_missing and not canonical_missing and raw_value == canonical_value
+                )
+                if not values_match:
+                    raise ValueError(
+                        "canonical Monte Carlo output disagrees with its RocketPy "
+                        f"log at case {case_id}, field {field!r}"
+                    )
+        if raw_output_ids == canonical_ids or canonical_ids.issubset(raw_output_ids):
+            use_canonical_outputs = False
+        elif raw_output_ids.issubset(canonical_ids):
+            use_canonical_outputs = True
+            resume_logs_available = False
+        else:
+            raise ValueError("RocketPy and canonical campaign logs have incompatible case IDs")
+    elif canonical_ids:
+        # Compact completed campaigns intentionally remove JSONL compatibility
+        # logs. Parquet can support analysis and a completed skip, but it cannot
+        # safely seed an append because RocketPy's append API requires logs.
+        use_canonical_outputs = True
+        resume_logs_available = False
+
+    if raw_outputs and not use_canonical_outputs:
+        mc.outputs_log = raw_outputs
+        mc.inputs_log = raw_inputs
+        already_done = raw_completed
+    elif canonical_records and use_canonical_outputs:
+        # Keep RocketPy's original scalar fields only; derived canonical aliases
+        # are recreated by the finalizer and must not masquerade as source data.
+        exported = set(mc.export_list) | {"index", "case_id"}
+        mc.outputs_log = [
+            {key: value for key, value in record.items() if key in exported}
+            for record in canonical_records
+        ]
+        mc.inputs_log = raw_inputs
+        already_done = len(canonical_ids or ())
+    else:
+        mc.outputs_log = []
+        mc.inputs_log = []
+        already_done = 0
+    mc.num_of_loaded_sims = already_done
 
     if deterministic_seeds is not None:
         mc._antares_serial_case = already_done
@@ -476,6 +596,12 @@ def execute_monte_carlo(config, project_dir):
                     simulation_goal = canonical_campaign.next_target(already_done, converged=False)
             except (OSError, json.JSONDecodeError):
                 pass
+    if already_done < simulation_goal and not resume_logs_available:
+        raise ValueError(
+            "cannot safely resume this Monte Carlo campaign: canonical results "
+            "and RocketPy compatibility logs do not contain the same completed "
+            "case IDs; restore matching JSONL logs or start a new campaign"
+        )
     if deterministic_seeds is not None:
         mc._antares_serial_case = already_done
     
@@ -527,6 +653,8 @@ def execute_monte_carlo(config, project_dir):
             all_flights = trajectory_snapshot["trajectories"]
     finally:
         mc._MonteCarlo__run_single_simulation = _orig_run_single
+        mc._MonteCarlo__evaluate_flight_inputs = _orig_evaluate_inputs
+        mc._MonteCarlo__evaluate_flight_outputs = _orig_evaluate_outputs
         if manager is not None:
             manager.shutdown()
 
@@ -591,17 +719,17 @@ def execute_monte_carlo(config, project_dir):
     with open(results_dir / "manifest.yaml", "w") as f:
         yaml.dump(manifest, f, default_flow_style=False)
 
-    if len(mc.outputs_log) < num_sims:
+    if len(mc.outputs_log) < simulation_goal:
         if canonical_campaign is not None:
             finalize_campaign_analysis(
                 canonical_campaign,
                 project_dir,
                 output_records=list(getattr(mc, "outputs_log", [])),
                 input_records=list(getattr(mc, "inputs_log", [])),
-                failure_records=_failure_records(mc, samples_df, num_sims),
+                failure_records=_failure_records(mc, samples_df, simulation_goal),
             )
         raise RuntimeError(
-            f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{num_sims} "
+            f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{simulation_goal} "
             f"simulations exported. Check worker errors and results in {results_dir}."
         )
         
@@ -613,7 +741,7 @@ def execute_monte_carlo(config, project_dir):
             project_dir,
             output_records=list(getattr(mc, "outputs_log", [])),
             input_records=list(getattr(mc, "inputs_log", [])),
-            failure_records=_failure_records(mc, samples_df, num_sims),
+            failure_records=_failure_records(mc, samples_df, simulation_goal),
         )
     
     outputs_file = results_dir / "mc_sim.outputs.txt"

@@ -1,4 +1,8 @@
-"""Run the canonical only_reefing scenario using this project's YAML data."""
+"""Run the configured two-stage reefing recovery scenario.
+
+The shared scenario registry uses a reduced-area reefed stage near apogee and
+the configured main parachute for the later descent. Review notes by Cau.
+"""
 from pathlib import Path
 import sys
 
@@ -10,6 +14,7 @@ from antares_fd.simulation import execute_scenario
 
 
 def main():
+    """Load Neblina 1 inputs and run the only-reefing scenario."""
     return execute_scenario(load_project_config(PROJECT_DIR), PROJECT_DIR, scenario_id="only_reefing")
 
 

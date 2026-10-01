@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import shutil
-import time
-import subprocess
 import sys
+import time
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,6 +21,7 @@ import pandas as pd
 from antares_fd.simulation.uq_storage import write_json_atomic, write_parquet_atomic
 from antares_fd.simulation.uncertainty import SamplingPlan, UncertaintyRegistry
 from antares_fd.simulation.scenarios import REQUIRED_SCENARIOS, SCENARIOS
+from antares_fd.config.input_files import collect_project_model_inputs
 
 
 PROFILES: dict[str, dict[str, Any]] = {
@@ -44,14 +45,70 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _path_component(value: str, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or value in {".", ".."}
+        or "/" in value
+        or "\\" in value
+        or "\0" in value
+        or Path(value).is_absolute()
+    ):
+        raise ValueError(f"{label} must be a single safe path component")
+    return value
+
+
+def _results_root(root: Path) -> Path:
+    repository = Path(root).resolve()
+    results = repository / "results"
+    if results.is_symlink():
+        raise ValueError(f"Campaign artifacts cannot use a symlinked results directory: {results}")
+    return results
+
+
+def _results_artifact_path(root: Path, path: Path) -> Path:
+    """Resolve one campaign artifact path and reject escapes or symlink hops."""
+    repository = Path(root).resolve()
+    results = _results_root(repository)
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = repository / candidate
+    lexical = Path(os.path.abspath(candidate))
+    if not lexical.is_relative_to(results):
+        raise ValueError(f"Campaign artifact path must remain below results/: {path}")
+    current = results
+    for part in lexical.relative_to(results).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"Campaign artifact path cannot traverse symlinks: {current}")
+    resolved_results = results.resolve()
+    resolved = lexical.resolve()
+    if not resolved.is_relative_to(resolved_results):
+        raise ValueError(f"Campaign artifact path resolves outside results/: {path}")
+    return lexical
+
+
+def campaign_path_for(root: Path, project: str, campaign_id: str) -> Path:
+    """Return a validated campaign path beneath the repository results area."""
+    project_name = _path_component(project, "Project name")
+    run_id = _path_component(campaign_id, "Campaign id")
+    repository = Path(root).resolve()
+    return _results_artifact_path(repository, repository / "results" / project_name / run_id)
+
+
 def _git_metadata(root: Path) -> dict[str, Any]:
-    try:
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-        branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True).strip()
-        dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True).strip())
-    except (OSError, subprocess.SubprocessError):
-        commit, branch, dirty = "unknown", "unknown", None
-    return {"commit": commit, "branch": branch, "dirty": dirty}
+    from antares_fd.analysis.provenance import get_git_provenance
+
+    provenance = get_git_provenance(Path(root))
+    dirty_state = provenance.get("dirty", "unknown")
+    dirty = dirty_state == "dirty" if dirty_state in {"dirty", "clean"} else None
+    return {
+        "commit": provenance.get("commit", "unknown"),
+        "branch": provenance.get("branch", "unknown"),
+        "dirty": dirty,
+        "working_tree_snapshot_sha256": provenance.get("working_tree_snapshot_sha256", "unknown"),
+    }
 
 
 @dataclass
@@ -72,34 +129,68 @@ class MonteCarloCampaign:
         settings = {**PROFILES[self.profile], **dict(self.config)}
         self.settings = settings
         self.started_monotonic = time.perf_counter()
+        project_name = _path_component(self.project, "Project name")
+        if self.scenario_id is not None:
+            self.scenario_id = _path_component(self.scenario_id, "Scenario id")
         if self.campaign_id is None:
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            self.campaign_id = f"{stamp}_{self.project}_{self.master_seed}"
-        self.root_path = Path(self.root) / "results" / self.project / self.campaign_id
-        self.path = self.root_path / "scenarios" / self.scenario_id if self.scenario_id else self.root_path
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+            base_id = f"{stamp}_{project_name}_{self.master_seed}"
+            suffix = 0
+            while True:
+                candidate = base_id if suffix == 0 else f"{base_id}_{suffix:02d}"
+                candidate_root = campaign_path_for(self.root, project_name, candidate)
+                try:
+                    candidate_root.mkdir(parents=True, exist_ok=False)
+                except FileExistsError:
+                    if not candidate_root.exists():
+                        raise
+                    suffix += 1
+                    continue
+                self.campaign_id = candidate
+                self.root_path = candidate_root
+                break
+        else:
+            self.campaign_id = _path_component(self.campaign_id, "Campaign id")
+            self.root_path = campaign_path_for(self.root, project_name, self.campaign_id)
+            self.root_path.mkdir(parents=True, exist_ok=True)
+        raw_path = self.root_path / "scenarios" / self.scenario_id if self.scenario_id else self.root_path
+        self.path = _results_artifact_path(self.root, raw_path)
         # A multi-scenario campaign has one immutable sample table at its root;
         # every scenario campaign points to that same file.
-        self.samples_path = self.root_path / "samples" / "inputs.parquet"
-        self.batches_path = self.path / "batches"
+        self.samples_path = _results_artifact_path(
+            self.root, self.root_path / "samples" / "inputs.parquet",
+        )
+        self.batches_path = _results_artifact_path(self.root, self.path / "batches")
         self.path.mkdir(parents=True, exist_ok=True)
+        self.samples_path.parent.mkdir(parents=True, exist_ok=True)
         self.batches_path.mkdir(parents=True, exist_ok=True)
-        (self.path / "config_snapshot").mkdir(exist_ok=True)
-        (self.path / "plots").mkdir(exist_ok=True)
-        (self.path / "logs").mkdir(exist_ok=True)
+        for directory_name in ("config_snapshot", "plots", "logs"):
+            directory = _results_artifact_path(self.root, self.path / directory_name)
+            directory.mkdir(parents=True, exist_ok=True)
 
     @property
     def is_scenario_campaign(self) -> bool:
         return self.scenario_id is not None
 
     def snapshot_config(self, project_dir: Path) -> dict[str, str]:
-        """Copy the small authoritative YAML inputs and return their hashes."""
+        """Snapshot all project-local model inputs without replacing prior bytes."""
         hashes: dict[str, str] = {}
-        source_dir = Path(project_dir) / "config"
-        destination = self.root_path / "config_snapshot"
-        for source in sorted(source_dir.glob("*.yaml")):
-            target = destination / source.name
-            shutil.copy2(source, target)
-            hashes[source.name] = _hash_file(target)
+        project_dir = Path(project_dir).resolve()
+        destination = _results_artifact_path(self.root, self.root_path / "config_snapshot")
+        destination.mkdir(parents=True, exist_ok=True)
+        for source in collect_project_model_inputs(project_dir):
+            relative = source.relative_to(project_dir)
+            target = _results_artifact_path(self.root, destination / relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source_hash = _hash_file(source)
+            if target.exists():
+                if _hash_file(target) != source_hash:
+                    raise ValueError(f"Campaign model input changed after snapshot: {relative.as_posix()}")
+            else:
+                shutil.copy2(source, target)
+                if _hash_file(source) != source_hash or _hash_file(target) != source_hash:
+                    raise RuntimeError(f"Campaign model input changed while snapshotting: {relative.as_posix()}")
+            hashes[relative.as_posix()] = source_hash
         return hashes
 
     def next_target(self, completed: int, converged: bool = False) -> int:
@@ -128,6 +219,7 @@ class MonteCarloCampaign:
 
     def make_samples(self, registry_path: Path | None, count: int | None = None, ensemble_size: int = 0) -> pd.DataFrame:
         """Create the immutable input table, including a case-local seed."""
+        self.samples_path = _results_artifact_path(self.root, self.samples_path)
         if self.samples_path.exists():
             return pd.read_parquet(self.samples_path)
         count = int(count or self.max_samples)
@@ -142,20 +234,30 @@ class MonteCarloCampaign:
 
     def completed_case_ids(self) -> set[int]:
         completed: set[int] = set()
-        for file in sorted(self.batches_path.glob("batch_*.parquet")):
+        batches_path = _results_artifact_path(self.root, self.batches_path)
+        for file in sorted(batches_path.glob("batch_*.parquet")):
+            file = _results_artifact_path(self.root, file)
+            if file.is_symlink():
+                raise ValueError(f"Campaign batch cannot be a symlink: {file}")
             try:
-                completed.update(pd.read_parquet(file, columns=["case_id"])["case_id"].astype(int).tolist())
-            except (OSError, ValueError, KeyError):
-                continue
+                batch = pd.read_parquet(file, columns=["case_id"])
+                completed.update(batch["case_id"].astype(int).tolist())
+            except Exception as exc:
+                raise ValueError(f"Cannot read campaign batch file: {file}") from exc
         return completed
 
     def write_batch(self, batch_number: int, results: pd.DataFrame) -> Path:
-        return write_parquet_atomic(results, self.batches_path / f"batch_{int(batch_number):05d}.parquet")
+        path = _results_artifact_path(
+            self.root, self.batches_path / f"batch_{int(batch_number):05d}.parquet",
+        )
+        return write_parquet_atomic(results, path)
 
     def write_manifest(self, status: str, samples: pd.DataFrame | None = None, extra: Mapping[str, Any] | None = None) -> Path:
         sample_count = int(len(samples)) if samples is not None else self.max_samples
         previous: dict[str, Any] = {}
-        manifest_path = self.path / "manifest.json"
+        manifest_path = _results_artifact_path(self.root, self.path / "manifest.json")
+        if manifest_path.is_symlink():
+            raise ValueError(f"Campaign manifest cannot be a symlink: {manifest_path}")
         if manifest_path.exists():
             try:
                 previous = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -178,24 +280,47 @@ class MonteCarloCampaign:
 
     def artifact_hashes(self) -> dict[str, str]:
         """Hash canonical files so an archived campaign can be verified."""
-        return {
-            str(file.relative_to(self.path)): _hash_file(file)
-            for file in sorted(self.path.rglob("*"))
-            if file.is_file() and file.name != "manifest.json" and ".tmp" not in file.name
-        }
+        self.path = _results_artifact_path(self.root, self.path)
+        hashes = {}
+        for file in sorted(self.path.rglob("*")):
+            if file.is_symlink():
+                raise ValueError(f"Campaign artifact cannot be a symlink: {file}")
+            if file.is_file() and file.name != "manifest.json" and ".tmp" not in file.name:
+                hashes[str(file.relative_to(self.path))] = _hash_file(file)
+        return hashes
 
     def archive(self, destination: Path | None = None) -> Path:
         """Create a portable ZIP containing canonical campaign evidence."""
+        self.path = _results_artifact_path(self.root, self.path)
         manifest_path = self.path / "manifest.json"
+        if manifest_path.is_symlink():
+            raise ValueError(f"Campaign manifest cannot be a symlink: {manifest_path}")
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            manifest = {"campaign_id": self.campaign_id, "project": self.project, "status": "COMPLETE"}
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Cannot archive campaign without a manifest: {manifest_path}") from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Cannot archive campaign with an unreadable manifest: {manifest_path}") from exc
+        terminal_statuses = {"PARTIAL", "COMPLETE", "COMPLETE_NOT_CONVERGED", "FAILED"}
+        if not isinstance(manifest, dict) or manifest.get("status") not in terminal_statuses:
+            raise ValueError(
+                f"Cannot archive campaign without a recognized terminal status: {manifest_path}"
+            )
+        destination = Path(destination) if destination is not None else Path(f"{self.path}.zip")
+        if not destination.is_absolute():
+            destination = Path(self.root).resolve() / destination
+        destination = _results_artifact_path(self.root, destination)
+        if destination == self.path or destination.is_relative_to(self.path):
+            raise ValueError("Campaign archive must be outside its source campaign directory")
+        if destination.exists():
+            raise FileExistsError(f"Campaign archive already exists: {destination}")
+        for path in self.path.rglob("*"):
+            if path.is_symlink():
+                raise ValueError(f"Campaign archive cannot contain symlinked artifacts: {path}")
         manifest["artifact_hashes"] = self.artifact_hashes()
         write_json_atomic(manifest, manifest_path)
-        destination = Path(destination or self.path.with_suffix(".zip"))
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
             for file in sorted(self.path.rglob("*")):
                 if file.is_file() and ".tmp" not in file.name:
                     archive.write(file, file.relative_to(self.path))
@@ -263,7 +388,9 @@ class StochasticScenarioCampaign:
         return self.base.make_samples(registry_path, self.base.max_samples, ensemble_size)
 
     def write_manifest(self, status: str = "CREATED", **extra: Any) -> Path:
-        manifest_path = self.path / "manifest.json"
+        manifest_path = _results_artifact_path(self.root, self.path / "manifest.json")
+        if manifest_path.is_symlink():
+            raise ValueError(f"Campaign manifest cannot be a symlink: {manifest_path}")
         previous: dict[str, Any] = {}
         if manifest_path.exists():
             try:

@@ -1,10 +1,12 @@
-"""
-Thin entry point for Monte Carlo Simulation.
+"""Launch the configured Neblina 1 Monte Carlo campaign.
+
+The shared runner reads ``ANTARES_MC_SCENARIO`` (default: ``nominal``) and
+owns sampling, resume checks, outputs, and reporting. Review notes by Cau.
 """
 import sys
 from pathlib import Path
 
-# Fix python path for template (although PIP install -e . makes it unnecessary, keep for backwards compatibility)
+# Keep direct execution from a source checkout working without an editable install.
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = PROJECT_DIR.parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "source"))
@@ -14,6 +16,7 @@ from antares_fd.config.loader import load_project_config
 from antares_fd.simulation.monte_carlo_failure import execute_monte_carlo
 
 def main():
+    """Load project YAML and hand the run to the shared Monte Carlo engine."""
     print(f"Loading configuration for {PROJECT_DIR.name}...")
     config = load_project_config(PROJECT_DIR)
     

@@ -112,19 +112,11 @@ def _read_json_file(path: Path):
 
 
 def _load_artifact_metrics(path: Path) -> dict:
-    """Load a metrics artifact, tolerating an interrupted legacy JSON write."""
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        try:
-            raw = path.read_text(encoding="utf-8")
-            # Older report generation could truncate while serializing an
-            # optional event object. Retain the complete scalar prefix and
-            # make the missing optional values explicit.
-            prefix = raw.split('"drogue_event"', 1)[0].rstrip().rstrip(",")
-            return json.loads(prefix + "\n}")
-        except (OSError, json.JSONDecodeError):
-            return {"project_name": "Antares", "vehicle_name": "NEBLINA 1"}
+    """Load canonical metrics or fail visibly; partial JSON is not evidence."""
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Metrics artifact must contain a JSON object: {path}")
+    return payload
 
 
 def _plain(value):

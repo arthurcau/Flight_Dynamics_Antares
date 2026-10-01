@@ -1,3 +1,5 @@
+"""Run nominal RocketPy Monte Carlo cases and standalone report artifacts."""
+
 import datetime
 from pathlib import Path
 import yaml
@@ -15,19 +17,22 @@ from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, Stocha
 
 from antares_fd.simulation.monte_carlo_patch import _transfer_rocket_components, ProfileStochasticEnvironment, ConfiguredMonteCarlo
 from antares_fd.simulation.runner import run_flight, flight_options
+from antares_fd.simulation.monte_carlo_resume import restore_jsonl_case_logs
 
 
 def execute_monte_carlo(config, project_dir):
-    """
-    Central orchestrator for Monte Carlo campaigns.
-    Reads config.monte_carlo and the standard nominal configs to construct
-    the Stochastic inputs, then runs a full Monte Carlo campaign using RocketPy.
+    """Build stochastic RocketPy inputs, restore case logs, then run remaining cases.
+
+    ``ANTARES_MC_SCENARIO`` selects the scenario. Campaign environment
+    variables route artifacts into a parent campaign; standalone runs create
+    their own results directory. Case logs are restored before worker startup,
+    so a complete resume does not launch the process manager.
     """
     mc_cfg = config.monte_carlo if config.monte_carlo else {}
     if not mc_cfg:
         raise ConfigurationError("Monte Carlo configuration (monte_carlo.yaml) is missing or empty.")
         
-    num_sims = mc_cfg.get("num_simulations", 10)
+    num_sims = int(mc_cfg.get("num_simulations", 10))
     seed = mc_cfg.get("random_seed", 42)
     scenario_id = os.environ.get("ANTARES_MC_SCENARIO", "nominal")
     from antares_fd.simulation.scenarios import apply_scenario
@@ -124,10 +129,8 @@ def execute_monte_carlo(config, project_dir):
         flight=stoch_flight,
         export_list=['apogee', 'apogee_time', 'x_impact', 'y_impact', 'impact_velocity', 'max_mach_number', 't_final', 'out_of_rail_velocity', 'max_dynamic_pressure', 'max_speed'],
     )
-    # Use RocketPy's process backend for every shared object.
-    manager = CampaignManager()
-    manager.start()
-    all_flights = manager.TrajectoryStore(seed)
+    manager = None
+    all_flights = []
     
     _orig_run_single = mc._MonteCarlo__run_single_simulation
     def _patched_run_single(*args, **kwargs):
@@ -148,12 +151,21 @@ def execute_monte_carlo(config, project_dir):
 
     # Checkpointing Logic
     outputs_file_path = results_dir / "mc_sim.outputs.txt"
-    already_done = 0
-    if outputs_file_path.exists():
-        with open(outputs_file_path, "r") as f:
-            already_done = sum(1 for line in f if line.strip())
-            
+    already_done = restore_jsonl_case_logs(
+        mc,
+        outputs_file_path,
+        Path(mc.input_file),
+        allowed_case_ids=set(range(num_sims)),
+    )
+
     remaining_sims = num_sims - already_done
+    if remaining_sims > 0:
+        # Use RocketPy's process backend only when there is work to run. A
+        # complete resume can report its restored records without requiring
+        # an unnecessary manager process/socket.
+        manager = CampaignManager()
+        manager.start()
+        all_flights = manager.TrajectoryStore(seed)
     
     try:
         if remaining_sims <= 0:
@@ -163,11 +175,16 @@ def execute_monte_carlo(config, project_dir):
             mc.simulate(number_of_simulations=num_sims, append=(already_done > 0),
                         parallel=True, include_function_data=False)
 
-        trajectory_snapshot = all_flights.snapshot()
+        trajectory_snapshot = (
+            all_flights.snapshot()
+            if manager is not None
+            else {"trajectories": [], "samples": [], "seen": 0}
+        )
         all_flights = trajectory_snapshot["trajectories"]
     finally:
         mc._MonteCarlo__run_single_simulation = _orig_run_single
-        manager.shutdown()
+        if manager is not None:
+            manager.shutdown()
 
     
     # 7. Write Manifest and Traceability

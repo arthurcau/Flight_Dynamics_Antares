@@ -1,12 +1,20 @@
+"""Construct and execute one deterministic RocketPy scenario."""
+
 from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
 from antares_fd.simulation.runner import run_flight
 from antares_fd.simulation.results import print_flight_summary
 from antares_fd.simulation.scenarios import apply_scenario, NOMINAL
 
-def execute_scenario(config, project_dir, print_summary=True, export_kml=True, scenario_id=NOMINAL):
+def execute_scenario(
+    config, project_dir, print_summary=True, export_kml=True,
+    scenario_id=NOMINAL, environment=None,
+):
     """
-    Central orchestrator that builds the environment, motor, and vehicle
-    from a given config, runs the simulation, and optionally exports the results.
+    Apply a scenario to a configuration copy, build RocketPy objects, and run it.
+
+    The optional ``environment`` lets paired cases reuse one atmosphere.
+    ``print_summary`` controls the standard result export; the return value is
+    the RocketPy ``Flight`` object.
     """
     # Apply the canonical override to a copy.  Builders and the report receive
     # the same scenario-specific configuration, while the caller's nominal
@@ -14,7 +22,8 @@ def execute_scenario(config, project_dir, print_summary=True, export_kml=True, s
     scenario_config = apply_scenario(config, scenario_id)
 
     # 1. Build Environment
-    environment = build_environment(scenario_config.environment, scenario_config.launch)
+    if environment is None:
+        environment = build_environment(scenario_config.environment, scenario_config.launch)
     
     # 2. Build Motor
     motor = build_motor(scenario_config.motor, project_dir)

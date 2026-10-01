@@ -74,6 +74,8 @@ class AtmosphereProfile:
     wind_direction: np.ndarray
     density: np.ndarray
     speed_of_sound: np.ndarray
+    coverage_status: str = "UNKNOWN"
+    coverage_bounds_asl_m: Optional[tuple[float, float]] = None
 
 
 @dataclass(frozen=True)

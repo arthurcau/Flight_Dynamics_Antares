@@ -1,3 +1,5 @@
+"""Export a human-readable summary and optional artifacts for one flight."""
+
 import sys
 import yaml
 import subprocess

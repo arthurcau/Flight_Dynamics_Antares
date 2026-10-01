@@ -64,6 +64,11 @@ class LengthDefinedStochasticFins(StochasticTrapezoidalFins):
 
 
 def _transfer_rocket_components(rocket, stoch_rocket):
+    """Copy supported surfaces, rail buttons, and parachutes to the stochastic rocket.
+
+    RocketPy does not inherit these components from the deterministic vehicle.
+    Unsupported surface types fail here rather than disappearing from a case.
+    """
     for item in rocket.aerodynamic_surfaces:
         surface, position = item.component, item.position[2]
         if isinstance(surface, NoseCone):

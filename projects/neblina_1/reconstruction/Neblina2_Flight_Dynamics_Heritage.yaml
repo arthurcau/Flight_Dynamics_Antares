@@ -1,0 +1,85 @@
+schema_version: 1
+source_flight: Neblina 1, LASC 2026
+evidence_policy: One flight is evidence for a discrepancy, not a population variance.
+source_telemetry_sha256: e516ee97fcf4c9a38ff25cd66f623a52e06b5132978da04719ad67e9752b098a
+model_baseline_status: PARTIALLY_RECONSTRUCTED_PREFLIGHT_MODEL
+quantities:
+  - quantity: onboard clock and logging
+    neblina_1_evidence: Four backward timestamp jumps; five acquisition-order segments; marked 86-row block exactly duplicates an earlier block.
+    confidence: HIGH_FOR_FILE_CONTENT_LOW_FOR_CLOCK_MECHANISM
+    identified_weakness: Reset/rollover mechanism, absolute epoch, and logger replay behavior are undocumented.
+    neblina_2_required_measurement: Firmware source, monotonic clock specification, reset reason, boot ID, sequence number, and synchronized event marker.
+    neblina_2_recommended_model: Preserve boot-segment IDs and monotonic timestamps; publish explicit synchronization uncertainty.
+    uncertainty_source: Clock discontinuities and unknown inter-segment gaps.
+    validation_method: Inject controlled resets and compare logs to an independent reference clock.
+  - quantity: altitude and pressure
+    neblina_1_evidence: Two BMP-labeled relative-altitude channels share a recorded peak of 3139.89 and 3144.27 m; raw pressure is absent.
+    confidence: MODERATE_FOR_RECORDED_VALUES_LOW_FOR_PHYSICAL_ALTITUDE
+    identified_weakness: Onboard pressure-to-altitude conversion, reference pressure, thermal compensation, and vertical datum are unknown.
+    neblina_2_required_measurement: Raw pressure, temperature, sensor model, calibration, reference pressure, installation/vent design, and independent altitude tracking.
+    neblina_2_recommended_model: Derive altitude offline from raw pressure and recorded atmospheric reference with uncertainty; retain onboard altitude separately.
+    uncertainty_source: Sensor calibration, reference pressure, vent dynamics, and atmosphere.
+    validation_method: Bench pressure sweep and comparison with independent ground/flight altimetry.
+  - quantity: accelerometer and gyroscope
+    neblina_1_evidence: Two MPU-labeled units record g and deg/s header labels; repeated -2 g samples occur during marked ascent.
+    confidence: HIGH_FOR_RECORDED_TOKENS_LOW_FOR_INERTIAL_STATE
+    identified_weakness: Model, range, scale, bias, mounting, axis orientation, digital filtering, and saturation status are unknown.
+    neblina_2_required_measurement: Sensor datasheets, configured range, calibration matrix, mounting transform, prelaunch stationary data, and saturation flags.
+    neblina_2_recommended_model: Calibrated specific force and angular-rate pipeline with explicit body/world frames and quality flags.
+    uncertainty_source: Bias, scale, alignment, clipping, vibration, and integration drift.
+    validation_method: Static orientation and rate-table tests; independent attitude/acceleration comparison.
+  - quantity: GPS and trajectory tracking
+    neblina_1_evidence: GPS channels are present but contain zero finite coordinate pairs in 10264 records.
+    confidence: HIGH
+    identified_weakness: No onboard 3-D position, horizontal velocity, fix quality, or independent time anchor.
+    neblina_2_required_measurement: Valid GNSS fixes with status, satellite count, datum, UTC time, and independent ground tracking.
+    neblina_2_recommended_model: Fuse only quality-qualified GNSS and calibrated IMU observations; preserve raw fixes.
+    uncertainty_source: Fix quality, antenna placement, sampling gaps, and multipath.
+    validation_method: Ground truth survey, static open-sky test, and synchronized flight tracker comparison.
+  - quantity: mass, center of gravity, inertia
+    neblina_1_evidence: Current YAML states 21.186 kg mass without motor and a 4 kg payload change; dated as-flown measurement records were not found.
+    confidence: LOW_FOR_AS_FLOWN
+    identified_weakness: Current values cannot be assigned to the flown vehicle from available provenance.
+    neblina_2_required_measurement: Signed launch-day weigh sheet, CG balance, configuration photograph, and inertia test with uncertainty.
+    neblina_2_recommended_model: Versioned as-built mass-property record linked to hardware configuration and simulation variant.
+    uncertainty_source: Assembly variability and measurement repeatability.
+    validation_method: Independent duplicate mass/CG measurements before integration and before launch.
+  - quantity: motor thrust and impulse
+    neblina_1_evidence: Current model uses Yaripo_teste_est_2_2.eng; linkage to the flown motor is unverified.
+    confidence: LOW_FOR_AS_FLOWN
+    identified_weakness: Static-test trace provenance, burn-time alignment, and lot variability are insufficient.
+    neblina_2_required_measurement: Motor serial/lot, calibrated static-fire curves, propellant mass, ignition timestamp, and burn evidence.
+    neblina_2_recommended_model: Traceable motor-family curves with distinct nominal and as-flown inputs.
+    uncertainty_source: Motor-to-motor variation, thrust stand calibration, and ignition delay.
+    validation_method: Repeated instrumented static fires and flight burnout observations.
+  - quantity: aerodynamic drag
+    neblina_1_evidence: Current power-on/off Cd tables cover Mach 0 to 1.6; source is unspecified and flight-derived Cd is not identifiable from available states.
+    confidence: LOW
+    identified_weakness: No independent airspeed vector, attitude, calibrated coast acceleration, or actual-day wind profile.
+    neblina_2_required_measurement: Calibrated trajectory/attitude, actual-day wind and density, reference geometry, and source-tagged OpenRocket/RASAero/CFD curves.
+    neblina_2_recommended_model: Preserve a priori Cd curves; compare source-tagged curves and estimate coast drag only within a documented observable window.
+    uncertainty_source: Airspeed, AoA, attitude, density, acceleration, mass, and reference area.
+    validation_method: Wind-tunnel or independent flight correlation with uncertainty and held-out flights.
+  - quantity: atmosphere and launch setup
+    neblina_1_evidence: Current launch YAML is marked planned at 10:30 local; MAGI target is 15:00 local on the configured date.
+    confidence: HIGH_FOR_CONFIG_MISMATCH_LOW_FOR_ACTUAL_CONDITIONS
+    identified_weakness: Actual launch time, rail attitude, and archived flight-day atmosphere are missing.
+    neblina_2_required_measurement: Timestamped rail survey, weather sounding/profile, surface conditions, and launch event log.
+    neblina_2_recommended_model: Freeze forecast snapshot preflight and separately archive measured/as-flown atmosphere.
+    uncertainty_source: Forecast lead time, wind shear, density, and setup measurement.
+    validation_method: Compare forecast to launch-day observations and rail survey to configuration.
+  - quantity: recovery
+    neblina_1_evidence: Current configuration specifies drogue/main deployment, but telemetry has no deployment event channel.
+    confidence: LOW_FOR_ACTUAL_EVENTS
+    identified_weakness: Deployment timing, CdS, lag, and separation event cannot be validated.
+    neblina_2_required_measurement: Ejection command/current, breakwire or switch status, video/ground observations, and descent tracking.
+    neblina_2_recommended_model: Event-based recovery with independently measured CdS and deployment lag.
+    uncertainty_source: Trigger altitude, ejection delay, inflation dynamics, and canopy performance.
+    validation_method: Ground deployment tests and flight event timestamp comparison.
+uncertainty_assumptions:
+  launch_orientation: RETAIN_AS_SCENARIO_NOT_STATISTICALLY_UPDATED
+  power_on_off_cd_sigma: MARK_INSUFFICIENT_DATA
+  dry_mass_sigma: MARK_INSUFFICIENT_DATA
+  total_impulse_sigma: MARK_INSUFFICIENT_DATA
+  site_elevation_sigma: MARK_INSUFFICIENT_DATA
+  magi_ensemble: RETAIN_WITH_ACTUAL_DAY_VALIDATION_PENDING
