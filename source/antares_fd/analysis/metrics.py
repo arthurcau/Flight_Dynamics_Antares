@@ -6,7 +6,7 @@ propulsion, and recovery metrics from a RocketPy Flight instance.
 Centralized, single-source-of-truth calculation for tables, charts, and compliance.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 import numpy as np
 from antares_fd.analysis.flight_metrics import (
     FlightMetrics,
@@ -43,17 +43,17 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
 
     # Basic attributes
     elev = float(env.elevation)
-    
+
     # 2. Extract Base Timeseries
     ts_z = np.array([flight.z(t) for t in t_eval])
     ts_alt_agl = ts_z - elev
     ts_x = np.array([flight.x(t) for t in t_eval])
     ts_y = np.array([flight.y(t) for t in t_eval])
-    
+
     ts_vz = np.array([flight.vz(t) for t in t_eval])
     ts_speed = np.array([flight.speed(t) for t in t_eval])
     ts_mach = np.array([flight.mach_number(t) for t in t_eval])
-    
+
     ts_ax = np.array([flight.ax(t) for t in t_eval])
     ts_ay = np.array([flight.ay(t) for t in t_eval])
     ts_az = np.array([flight.az(t) for t in t_eval])
@@ -90,7 +90,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     ts_mass = np.array([rocket.total_mass(t) for t in t_eval])
     ts_cg = np.array([rocket.center_of_mass(t) for t in t_eval])
     ts_cp = np.array([rocket.cp_position(t) for t in t_eval])
-    
+
     # Angular properties
     ts_w1 = np.array([flight.w1(t) if hasattr(flight, 'w1') else 0.0 for t in t_eval])
     ts_w2 = np.array([flight.w2(t) if hasattr(flight, 'w2') else 0.0 for t in t_eval])
@@ -139,27 +139,27 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     rail_accel_y = float(flight.ay(t_liftoff))
     rail_accel_z = float(flight.az(t_liftoff))
     rail_exit_accel = float(np.sqrt(rail_accel_x**2 + rail_accel_y**2 + rail_accel_z**2))
-    
+
     # 5. Peak Aero
     max_q_idx = int(np.argmax(ts_q[ascent_mask])) if np.any(ascent_mask) else int(np.argmax(ts_q))
     t_max_q = float(t_eval[ascent_mask][max_q_idx]) if np.any(ascent_mask) else float(t_eval[max_q_idx])
-    
+
     peak_qa = float(np.max(ts_q_alpha[aero_mask])) if np.any(aero_mask) else 0.0
     t_peak_qa = float(t_eval[aero_mask][np.argmax(ts_q_alpha[aero_mask])]) if np.any(aero_mask) else 0.0
     max_mach_idx = int(np.argmax(ts_mach))
     t_max_mach = float(t_eval[max_mach_idx])
-    
+
     # T/W Mechanics
     m_liftoff = float(rocket.total_mass(0))
     initial_tw = float(motor.thrust(0) / (m_liftoff * g0)) if m_liftoff > 0 else 0.0
     t_ignition = float(getattr(motor, "burn_start_time", 0.0))
     ignition_tw = float(motor.thrust(t_ignition) / (rocket.total_mass(t_ignition) * g0)) if rocket.total_mass(t_ignition) > 0 else 0.0
     rail_exit_tw = float(motor.thrust(t_liftoff) / (rocket.total_mass(t_liftoff) * g0)) if rocket.total_mass(t_liftoff) > 0 else 0.0
-    
+
     burn_tw = ts_thrust[(t_eval <= t_burnout)] / (ts_mass[(t_eval <= t_burnout)] * g0)
     peak_tw = float(np.max(burn_tw)) if len(burn_tw) > 0 else initial_tw
     avg_burn_tw = float(np.mean(burn_tw)) if len(burn_tw) > 0 else initial_tw
-    
+
     # Parachute events
     drogue_evt = None
     main_evt = None
@@ -168,11 +168,11 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
             p_time = float(p_time)
             deploy_t = float(p_time + getattr(p_obj, "lag", 0.0))
             is_drogue = "drogue" in p_obj.name.lower() or drogue_evt is None
-            
+
             # The recovery shock is an unphysical numerical discontinuity due to CdS step change.
             shock_mask = (t_eval >= deploy_t - 0.5) & (t_eval <= deploy_t + 2.5)
             numerical_shock_g = float(np.max(ts_a_tot[shock_mask]) / g0) if np.any(shock_mask) else 0.0
-            
+
             evt = ParachuteEvent(
                 name=p_obj.name,
                 time=p_time,
@@ -209,7 +209,6 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     # Static Margin bounds
     burn_mask = (t_eval >= 0) & (t_eval <= t_burnout)
     sm_min_burn = float(np.min(ts_sm[burn_mask])) if np.any(burn_mask) else ts_sm[0]
-    sm_max_burn = float(np.max(ts_sm[burn_mask])) if np.any(burn_mask) else ts_sm[0]
     max_sm = float(np.max(ts_sm))
 
     # Field validation requires source, date, datum and uncertainty for a
@@ -239,7 +238,7 @@ def extract_flight_metrics(flight: Any, config: Optional[Any] = None, project_di
     )
     z_eval_env = np.linspace(lower_asl, upper_asl, 250)
     z_agl_env = z_eval_env - elev
-    
+
     env_u, env_v = [], []
     env_spd, env_dir = [], []
     env_rho, env_sos = [], []

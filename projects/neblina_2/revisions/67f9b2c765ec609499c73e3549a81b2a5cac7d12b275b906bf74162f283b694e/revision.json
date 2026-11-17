@@ -1,0 +1,24 @@
+{
+  "revision": "67f9b2c765ec609499c73e3549a81b2a5cac7d12b275b906bf74162f283b694e",
+  "note": "Definição inicial do Neblina 2: geometria relativa do motor, troca de alojamentos e redução estrutural seletiva",
+  "files": {
+    "config/README.md": "ff3659576cb5855e4682ee3af5682a38ea7a756400b0348f1cdfde674f38d1cc",
+    "config/environment.yaml": "86b8f43bffe08b889fc3921139874996daa90d3b958006aa95b9ef2c60a2d37c",
+    "config/launch.yaml": "e14a13f7454b798e945c83438e30da820a585acc1a9da2ab842135e66a8256ec",
+    "config/model.yaml": "a86d2c2871a77bd27d147ecd22c321b108565711521556d73d46e8dd7ec10826",
+    "config/monte_carlo.yaml": "346cfafc54f796b5e7f5074144afb210e97a8cf645980b0e3d224dbb09ac0d03",
+    "config/motor.yaml": "e0606f286f28a7203aa4924807b673b5dabfaff96e6d2db3ffe8a8673692e7d9",
+    "config/recovery.yaml": "0fa4cd629c13f5ca3a7e1dd28c4915af87747b0366123810b3e85d0108fd0f79",
+    "config/requirements.yaml": "450040912e4c1cd1a600818732b92ec10c0936dd9786c5718adffabe422e4a14",
+    "config/uncertainties.yaml": "ffea3bf02703f7bad841990c6fdd5e0ad5b7cfdc832395575af252e4d2a943b3",
+    "config/vehicle.yaml": "8e4ace71ac8f6281c944fdf9c851ddb9f6741cfca99196ef88c267e6e6021f02",
+    "aero/README.md": "586852e94ed836c4468cad2184909b75013f12205f69759de5fae1780e884887",
+    "aero/power_off_drag.csv": "ce8deda5852dce1a9555e217969d3a36d9ce94ebcfa41d880006c4eac0f0a916",
+    "aero/power_on_drag.csv": "3b7cfcc374ad272e6ccaf49b40beb64ea50a9fe5fcf95d1710ba55cd7d88015d",
+    "motors/README.md": "f10e055921c0f8e66c3db3a2bbe83aef3de265140bedad300b7a52cf685470e1",
+    "motors/Yaripo.eng": "7fe8ff780d7aaa6626e7d85df571e886ae594b22894dcd85b8242e7224f713a2",
+    "motors/Yaripo_teste_est_2_2.eng": "ed4dc403fbd0894dc718d61e831aca083d710326c91ae018cd8d71de6d7f8512",
+    "motors/motor.eng": "7fe8ff780d7aaa6626e7d85df571e886ae594b22894dcd85b8242e7224f713a2"
+  },
+  "created_utc": "2026-11-17T04:36:22.547043+00:00"
+}

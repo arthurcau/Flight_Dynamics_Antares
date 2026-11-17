@@ -18,11 +18,21 @@ class StateManager:
     CACHE_DEGRADED_LIMIT_HOURS = 12
 
     def __init__(self, cache_dir="dados_cache"):
+        """Prepare o caminho dos metadados de estado da aquisição meteorológica.
+
+        Armazena cache_dir e cria somente o diretório pai de cache_meta.json.
+        A inicialização não marca os dados como recentes.
+        """
         self.cache_dir = str(cache_dir)
         self.metadata_path = Path(cache_dir) / "cache_meta.json"
         self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _read_metadata(self):
+        """Leia os metadados persistidos sem renovar o instante de aquisição.
+
+        Retorna dict vazio se o arquivo não existe, não pode ser lido ou tem JSON
+        inválido. A avaliação posterior trata ausência como informação indisponível.
+        """
         if not self.metadata_path.exists():
             return {}
         try:
@@ -31,12 +41,22 @@ class StateManager:
             return {}
 
     def write_metadata(self, meta):
+        """Publique os metadados de estado por substituição de arquivo.
+
+        Serializa meta em um temporário vizinho e substitui cache_meta.json
+        após a escrita. Erros de escrita são propagados.
+        """
         temporary = self.metadata_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(meta, indent=2))
         temporary.replace(self.metadata_path)
 
     @staticmethod
     def _utc(value):
+        """Converta uma data ISO 8601 com offset para datetime UTC.
+
+        Aceita o sufixo Z; rejeita datas sem timezone com ValueError.
+        O resultado permite comparar cobertura e idade sem misturar fusos.
+        """
         date = datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         if date.tzinfo is None:
             raise ValueError("State timestamps require explicit timezone")
@@ -54,7 +74,7 @@ class StateManager:
         meta = self._read_metadata()
         requested = self._utc(valid_time_utc) if valid_time_utc is not None else now
         available = available_valid_times if available_valid_times is not None else meta.get("valid_times_utc", [])
-        
+
         if (available_valid_times is None or len(available) == 0) and fetch_success:
             covered = True
             available = [requested.isoformat()]

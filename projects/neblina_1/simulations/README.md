@@ -16,13 +16,13 @@ that package so individual project scripts do not drift apart.
 | `monte_carlo.py` | Stochastic flight cases. | Calls the shared failure-aware runner; `ANTARES_MC_SCENARIO` selects the configured scenario. |
 | `monte_carlo_failure.py` | Stochastic flight cases. | Also calls the shared failure-aware runner; retained as a direct failure-campaign launcher. |
 | `run_all.py` | One consolidated project campaign. | The campaign runner selects declared entry points and writes a shared results directory. |
-| `separation_at_main_opening.py` | Illustrative mass-change case. | Subtracts an assumed 2 kg before launch; it does not model a timed separation and is excluded from campaign selection. |
 | `plot_flight_data.py` | Plots the raw telemetry log. | Uses acquisition order and clock segments; it does not simulate a flight or edit the source log. |
 
 The campaign runner does not execute every Python file in this directory. It
 selects the declared deterministic entry points and at most one Monte Carlo
-launcher. In particular, the separation example and plotting utility are not
-flight cases. See `source/antares_fd/simulation/campaign.py` for the exact
+launcher. The plotting utility is not a flight case. The former separation
+example was removed because it used an assumed mass change before launch.
+See `source/antares_fd/simulation/campaign.py` for the exact
 selection list and execution order.
 
 ## Running a script

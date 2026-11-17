@@ -3,7 +3,6 @@
 import json
 from types import SimpleNamespace
 import importlib
-from pathlib import Path
 
 import pytest
 import yaml

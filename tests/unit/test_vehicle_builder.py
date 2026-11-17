@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 from rocketpy import Rocket
 
 from antares_fd.config.models import ConfigDict

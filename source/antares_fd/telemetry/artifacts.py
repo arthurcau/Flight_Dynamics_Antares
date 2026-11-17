@@ -40,6 +40,11 @@ class TelemetryArtifactError(RuntimeError):
 
 
 def _sha256(path: Path) -> str:
+    """Calcule SHA-256 de um artefato de telemetria sem modificá-lo.
+
+    Lê blocos binários e retorna o digest hexadecimal para verificação
+    de integridade e vinculação ao registro bruto.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -48,6 +53,11 @@ def _sha256(path: Path) -> str:
 
 
 def _load_metadata(metadata_path: Path) -> dict[str, Any]:
+    """Carregue e valide os metadados YAML da auditoria de telemetria.
+
+    Lê metadata_path, exige o contrato esperado e retorna o mapeamento.
+    Campos de calibração ausentes não são preenchidos com estimativas.
+    """
     try:
         with metadata_path.open("r", encoding="utf-8") as stream:
             metadata = yaml.safe_load(stream)
@@ -103,6 +113,11 @@ def _load_metadata(metadata_path: Path) -> dict[str, Any]:
 
 
 def _write_text_atomic(text: str, path: Path) -> None:
+    """Publique um documento de texto sem expor gravação parcial.
+
+    Escreve UTF-8 em arquivo temporário no diretório de destino e usa
+    substituição atômica. Em falha, remove o temporário e propaga o erro.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(name)
@@ -163,7 +178,17 @@ def _calibration_manifest(
 
 
 def _markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
+    """Formate cabeçalhos e linhas em uma tabela Markdown.
+
+    Converte as células com o formatador local e inclui a linha separadora.
+    Retorna texto para o relatório sem alterar os dados canônicos.
+    """
     def cell(value: Any) -> str:
+        """Escape uma célula para não quebrar a estrutura Markdown.
+
+        Converte value em texto e neutraliza separadores e quebras de linha.
+        O retorno é usado somente na apresentação do relatório.
+        """
         if value is None or (isinstance(value, float) and pd.isna(value)):
             return "—"
         return str(value).replace("|", "\\|").replace("\n", " ")

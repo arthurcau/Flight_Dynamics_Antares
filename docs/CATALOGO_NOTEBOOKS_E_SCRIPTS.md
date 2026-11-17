@@ -1,5 +1,9 @@
 # Catálogo dos notebooks e scripts Python
 
+> Registro histórico de setembro de 2026. A [revisão de código de novembro](REVISAO_CODIGO_2026-11-16.md)
+> removeu utilitários de patch e os exemplos de separação com massa presumida.
+> Para a API atual, consulte a [referência funcional](referencia_funcoes/README.md).
+
 Data da análise: 20/09/2026. Revisão de referência:
 `07d6cc2ac0818a62c41a3e93f3b3e9152d40f4c5`.
 
@@ -171,7 +175,7 @@ o identificador interno do cenário é `ballistic`.
 | Voo balístico | [balistic.py](../projects/neblina_1/simulations/balistic.py) | [balistic.py](../projects/andorinha/simulations/balistic.py) | [balistic.py](../projects/00_Copy_This/simulations/balistic.py) | Executa o cenário `ballistic`, desabilitando todos os dispositivos de recuperação em uma cópia da configuração. |
 | Principal no apogeu | [main_at_apogee.py](../projects/neblina_1/simulations/main_at_apogee.py) | [main_at_apogee.py](../projects/andorinha/simulations/main_at_apogee.py) | [main_at_apogee.py](../projects/00_Copy_This/simulations/main_at_apogee.py) | Desabilita drogue e configura o principal para disparar no apogeu. |
 | Recuperação com reefing | [only_reefing.py](../projects/neblina_1/simulations/only_reefing.py) | [only_reefing.py](../projects/andorinha/simulations/only_reefing.py) | [only_reefing.py](../projects/00_Copy_This/simulations/only_reefing.py) | Representa a fase reefada pelo dispositivo drogue com fração de CdS do principal; mantém abertura plena na altitude configurada. Requer `recovery.reefing.cd_s_fraction`. |
-| Separação aproximada | [separation_at_main_opening.py](../projects/neblina_1/simulations/separation_at_main_opening.py) | [separation_at_main_opening.py](../projects/andorinha/simulations/separation_at_main_opening.py) | [separation_at_main_opening.py](../projects/00_Copy_This/simulations/separation_at_main_opening.py) | Subtrai 2 kg da massa sem motor, se a massa original for maior que 2 kg, antes do voo nominal inteiro. Não implementa um evento de separação durante a descida. |
+| Separação aproximada | `separation_at_main_opening.py` (removido em novembro) | `separation_at_main_opening.py` (removido em novembro) | `separation_at_main_opening.py` (removido em novembro) | Subtrai 2 kg da massa sem motor, se a massa original for maior que 2 kg, antes do voo nominal inteiro. Não implementa um evento de separação durante a descida. |
 | Monte Carlo | [monte_carlo.py](../projects/neblina_1/simulations/monte_carlo.py) | [monte_carlo.py](../projects/andorinha/simulations/monte_carlo.py) | [monte_carlo.py](../projects/00_Copy_This/simulations/monte_carlo.py) | Neblina usa `simulation/monte_carlo_failure.py`; Andorinha e template usam `simulation/monte_carlo.py`. |
 | Compatibilidade Monte Carlo | [monte_carlo_failure.py](../projects/neblina_1/simulations/monte_carlo_failure.py) | — | — | Chama o mesmo executor do `monte_carlo.py` do Neblina; o nome não força um cenário de falha. |
 | Campanha consolidada | [run_all.py](../projects/neblina_1/simulations/run_all.py) | — | [run_all.py](../projects/00_Copy_This/simulations/run_all.py) | Descobre scripts, executa cenários determinísticos e estocásticos, centraliza artefatos e produz relatório mestre. Evita duplicar o wrapper `monte_carlo_failure.py`. |

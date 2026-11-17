@@ -13,15 +13,26 @@ class BoundedDrag:
     maximum: float
 
     def __call__(self, mach):
+        """Avalie Cd no Mach solicitado dentro do domínio tabulado.
+
+        Rejeita Mach fora da cobertura com ConfigurationError; dentro dela, avalia
+        a curva configurada. Evita extrapolar um modelo aerodinâmico sem dados.
+        """
         if np.any(np.asarray(mach) < self.minimum) or np.any(np.asarray(mach) > self.maximum):
             raise ConfigurationError(f"Drag requested outside Mach [{self.minimum}, {self.maximum}]: {mach}")
         return self.curve(mach)
 
 
 def _resolve_drag_source(drag_config, project_dir: Path):
+    """Traduza a declaração de arrasto para uma fonte RocketPy validada.
+
+    Lê Cd constante ou tabela relativa a project_dir, valida valores e domínio
+    de Mach e preserva os limites de cobertura. Configuração inválida gera
+    ConfigurationError antes da integração do voo.
+    """
     if not drag_config:
         raise ConfigurationError("Both power_on and power_off drag sources are required")
-    
+
     source_type = drag_config.get("source_type")
     if source_type == "file":
         filepath = drag_config.get("file")
@@ -29,10 +40,7 @@ def _resolve_drag_source(drag_config, project_dir: Path):
             raise ConfigurationError("drag source_type is 'file' but no 'file' path provided")
         full_path = project_dir / filepath
         if not full_path.exists():
-            # For the template, we might want to return 0.0 or a dummy, 
-            # but strict validation says we must fail fast.
-            # However, if this is 00_Copy_This, it might not exist.
-            # We'll fail fast as requested by architecture principles.
+            # Ausência de curva declarada impede a simulação.
             raise ConfigurationError(f"Drag file not found: {full_path}")
         interpolation = drag_config.get("interpolation", "linear")
         extrapolation = drag_config.get("extrapolation", "forbidden")
@@ -58,10 +66,21 @@ def _resolve_drag_source(drag_config, project_dir: Path):
         return float(const_val)
     raise ConfigurationError(f"Unsupported drag source_type: {source_type}")
 
-def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
-    """Builds the RocketPy Rocket object from the vehicle configuration."""
-    print("Building Vehicle...")
-    
+def build_vehicle(vehicle_config, motor, project_dir: Path, *, verbose=True) -> Rocket:
+    """Construa um RocketPy Rocket pelas entradas do veículo, sem integrar voo.
+
+    Recebe configuração em SI, motor já construído e diretório das curvas.
+    Se o inventário de componentes estiver ativo, calcula massa/CG/tensor em
+    uma cópia antes de montar superfícies, trilhos e motor. Rejeita recursos
+    não representados pelo builder; erros físicos e de arquivo propagam-se.
+    verbose=False suprime a mensagem operacional para validadores/CLI JSON.
+    Retorna o objeto pronto para instalar recuperação e executar o cenário.
+    """
+    from antares_fd.design.components import resolve_vehicle_mass
+    vehicle_config = resolve_vehicle_mass(vehicle_config)
+    if verbose:
+        print("Building Vehicle...")
+
     # --- 1. Basic Geometry and Mass Properties ---
     geometry = vehicle_config.get("geometry", {})
     mass_props = vehicle_config.get("mass_properties", {})
@@ -72,19 +91,19 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
             raise ConfigurationError(f"vehicle.{section} is not implemented")
     if vehicle_config.get("staging", {}).get("enabled", False):
         raise ConfigurationError("Staging requires an event model and explicit post-separation properties")
-    
+
     ref_dia = geometry.get("reference_diameter")
     if ref_dia is None:
         raise ConfigurationError("vehicle.geometry.reference_diameter is required")
-        
+
     mass = mass_props.get("mass_without_motor")
     if mass is None:
         raise ConfigurationError("vehicle.mass_properties.mass_without_motor is required")
-        
+
     cm = mass_props.get("center_of_mass_without_motor")
     if cm is None:
         raise ConfigurationError("vehicle.mass_properties.center_of_mass_without_motor is required")
-        
+
     inertia_config = mass_props.get("inertia", {})
     inertia = [
         inertia_config.get("I11"),
@@ -135,10 +154,10 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
         base_radius = nose.get("base_radius")
         if base_radius is None:
             base_radius = ref_dia / 2.0
-            
+
         if length is None:
             raise ConfigurationError("vehicle.nose.length is required")
-            
+
         rocket.add_nose(
             length=length,
             kind=kind,
@@ -167,15 +186,15 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
             pos = f.get("position")
             if pos is None:
                 raise ConfigurationError(f"vehicle.fin_sets position is required for fin set '{f.get('name')}'")
-            
+
             radius = f.get("body_radius")
             if radius is None:
                 radius = ref_dia / 2.0
-                
+
             n = f.get("number")
             if n is None:
                 raise ConfigurationError(f"vehicle.fin_sets number is required for fin set '{f.get('name')}'")
-                
+
             if ftype == "trapezoidal":
                 for field in ["root_chord", "tip_chord", "span"]:
                     if f.get(field) is None:
@@ -193,7 +212,7 @@ def build_vehicle(vehicle_config, motor, project_dir: Path) -> Rocket:
                     fin_kwargs["sweep_length"] = f.get("sweep_length")
                 if f.get("sweep_angle_deg") is not None:
                     fin_kwargs["sweep_angle"] = f.get("sweep_angle_deg")
-                    
+
                 rocket.add_trapezoidal_fins(**fin_kwargs)
             elif ftype == "elliptical":
                 for field in ["root_chord", "span"]:

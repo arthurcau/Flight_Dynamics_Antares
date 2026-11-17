@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 import numpy as np
 
 
@@ -88,7 +88,7 @@ class FlightMetrics:
     latitude: float
     longitude: float
     elevation_m: float
-    
+
     # 2. Temporal Landmarks
     liftoff_time: float
     rail_exit_time: float
@@ -114,7 +114,7 @@ class FlightMetrics:
     burnout_velocity: float
     rail_exit_velocity: float
     rail_exit_acceleration: float
-    
+
     # 5. Accelerations
     max_total_acceleration: float
     max_total_acceleration_time: float
@@ -126,7 +126,7 @@ class FlightMetrics:
     max_q_mach: float
     peak_valid_q_alpha: float
     peak_valid_q_alpha_time: float
-    
+
     # 7. Stability & Attitude
     max_angle_of_attack: float
     angle_of_attack_at_max_q: float
@@ -149,7 +149,7 @@ class FlightMetrics:
     rail_exit_tw: float
     peak_tw: float
     average_burn_tw: float
-    
+
     # 9. Recovery
     drogue_deployment_time: Optional[float]
     main_deployment_time: Optional[float]

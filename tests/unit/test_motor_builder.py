@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 from rocketpy import SolidMotor
 
 from antares_fd.config.models import ConfigDict
@@ -29,14 +28,14 @@ def valid_motor_config():
     })
 
 def test_build_motor_success(valid_motor_config, tmp_path):
-    # We need a dummy .eng file for rocketpy to parse without errors, 
+    # We need a dummy .eng file for rocketpy to parse without errors,
     # but rocketpy SolidMotor constructor parses the file immediately.
     # So we write a simple dummy .eng file.
     eng_file = tmp_path / "motor.eng"
     eng_file.write_text("Dummy Motor\n  0.0  0.0\n  3.0  1000.0\n")
-    
+
     motor = build_motor(valid_motor_config, project_dir=tmp_path)
-    
+
     assert isinstance(motor, SolidMotor)
     assert motor.burn_time[1] == 3.0
     assert motor.dry_mass == 1.5
@@ -50,8 +49,8 @@ def test_build_motor_invalid_arguments(valid_motor_config, tmp_path):
     # Remove a required parameter to trigger TypeError from SolidMotor
     eng_file = tmp_path / "motor.eng"
     eng_file.write_text("Dummy Motor\n  0.0  0.0\n  3.0  1000.0\n")
-    
+
     valid_motor_config["grain_number"] = None
-    
+
     with pytest.raises(ConfigurationError, match="Failed to build SolidMotor"):
         build_motor(valid_motor_config, project_dir=tmp_path)

@@ -1,4 +1,4 @@
-rocketpy>=1.1.0
+rocketpy>=1.13.0,<1.14
 pyyaml>=6.0
 pytest>=7.0
 staticmap>=0.5.7
@@ -9,3 +9,8 @@ scikit-learn
 xarray
 reportlab>=4.0.0
 pyarrow>=15.0.0
+numpy
+scipy
+requests
+netCDF4
+Pillow

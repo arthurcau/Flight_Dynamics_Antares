@@ -13,6 +13,11 @@ import pandas as pd
 
 
 def _validate_finite_json_values(value: Any) -> None:
+    """Rejeite números não finitos em estruturas JSON aninhadas.
+
+    Percorre objetos e listas recursivamente; float NaN ou infinito gera
+    ValueError. Não transforma valores inválidos em zero ou texto.
+    """
     if isinstance(value, float) and not math.isfinite(value):
         raise ValueError("non-finite numeric value")
     if isinstance(value, int) and not isinstance(value, bool):
@@ -67,6 +72,11 @@ def read_jsonl_objects(path: Path, *, missing_ok: bool = False) -> list[dict[str
 
 
 def _temporary_path(path: Path) -> Path:
+    """Crie um arquivo temporário exclusivo ao lado do destino.
+
+    Garante o diretório pai, usa mkstemp e fecha o descritor imediatamente.
+    Retorna Path no mesmo sistema de arquivos para permitir os.replace atômico.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     os.close(handle)

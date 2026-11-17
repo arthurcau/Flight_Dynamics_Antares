@@ -1,0 +1,6 @@
+# Entradas humanas: regenere os locks conforme docs/MANUTENCAO.md.
+-r requirements.txt
+pytest-cov>=4
+ruff==0.17.5
+setuptools>=68
+wheel

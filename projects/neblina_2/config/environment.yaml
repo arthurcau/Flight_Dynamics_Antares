@@ -1,0 +1,9 @@
+environment:
+  fallback:
+    enabled: false
+    type: standard_atmosphere
+  target_date: null
+  target_time: null
+  time_step_minutes: 5
+  time_window_minutes: 60
+  type: MAGI

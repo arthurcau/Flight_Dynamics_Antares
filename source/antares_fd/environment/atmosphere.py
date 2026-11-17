@@ -24,11 +24,31 @@ class AtmosphericProfile:
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
+        """Valide e copie vetores atmosféricos unidimensionais em unidades SI.
+
+        Cada campo recebe uma cópia numérica somente para leitura, com pelo
+        menos dois níveis finitos. Altitude deve crescer e pressão decrescer;
+        temperatura e pressão devem ser positivas. Umidade específica, quando
+        presente, deve pertencer a [0, 1). Falhas geram ConfigurationError
+        antes da construção do ambiente RocketPy.
+        """
+        names = ("altitude_asl_m", "pressure_pa", "temperature_k", "wind_u_mps", "wind_v_mps")
+        if self.specific_humidity_kg_kg is not None:
+            names += ("specific_humidity_kg_kg",)
+        for name in names:
+            try:
+                vector = np.array(getattr(self, name), dtype=float, copy=True)
+            except (TypeError, ValueError) as exc:
+                raise ConfigurationError(f"Array {name} must be numeric") from exc
+            if vector.ndim != 1:
+                raise ConfigurationError(f"Array {name} must be one-dimensional")
+            vector.setflags(write=False)
+            object.__setattr__(self, name, vector)
         # Validate lengths
         n = len(self.altitude_asl_m)
         if n < 2:
             raise ConfigurationError("Atmospheric profile must have at least 2 altitude levels.")
-        
+
         for name, arr in [
             ("altitude_asl_m", self.altitude_asl_m),
             ("pressure_pa", self.pressure_pa),
@@ -38,7 +58,7 @@ class AtmosphericProfile:
         ]:
             if len(arr) != n:
                 raise ConfigurationError(f"Array {name} length ({len(arr)}) does not match altitude length ({n}).")
-            
+
             if np.isnan(arr).any() or np.isinf(arr).any():
                 raise ConfigurationError(f"Array {name} contains NaN or Inf values.")
 
@@ -49,7 +69,7 @@ class AtmosphericProfile:
         # Validate physical bounds
         if np.any(self.pressure_pa <= 0):
             raise ConfigurationError("Pressure array contains non-positive values.")
-        
+
         if np.any(self.temperature_k <= 0):
             raise ConfigurationError("Temperature array contains non-positive values.")
         if np.any(np.diff(self.pressure_pa) >= 0):

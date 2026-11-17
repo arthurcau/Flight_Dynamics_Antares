@@ -1,0 +1,8 @@
+schema_version: 1
+model:
+  stage: DESIGN
+  name: neblina_2
+  baseline:
+    project: neblina_1
+    revision: 767b7ec27eba1a3f0b1ab829fc01398ed552cac446c05ed97310fd567b22d4a2
+  notes: 'Entradas herdadas: revisar dados e hipóteses antes de simular.'

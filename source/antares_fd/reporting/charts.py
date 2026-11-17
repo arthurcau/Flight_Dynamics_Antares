@@ -73,7 +73,6 @@ def generate_mass_and_propulsion_chart(flight: Any, output_path: Path) -> Path:
 
     thrust_vals = np.array([float(motor.thrust(t)) if t <= t_bo else 0.0 for t in t_eval])
     mass_vals = np.array([float(rocket.total_mass(t)) for t in t_eval])
-    prop_init = float(getattr(motor, "propellant_initial_mass", mass_vals[0] - mass_vals[-1]))
     dry_mass = float(rocket.mass)
     prop_vals = np.maximum(0.0, mass_vals - dry_mass)
 

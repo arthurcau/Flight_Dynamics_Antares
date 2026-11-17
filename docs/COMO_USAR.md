@@ -1,56 +1,71 @@
-# Guia Rápido: Como Usar o Repositório
+# Guia rápido de uso
 
-Este guia é um passo a passo prático para novos membros da equipe rodarem suas simulações de voo rapidamente.
+O [onboarding completo](ONBOARDING.md) reúne instalação em Linux/macOS e
+Windows, mapa dos arquivos, criação de foguetes, campanhas, telemetria e
+solução de problemas. Este documento mantém apenas o roteiro curto.
 
-## 1. Configurando o seu computador
-Antes de rodar qualquer coisa pela primeira vez, você precisa instalar as dependências (RocketPy, etc).
-Abra o terminal na pasta raiz do repositório e rode:
-```bash
-./setup.sh
-```
-*(Se você usar Windows, apenas rode `pip install -r requirements.txt`).*
+## Estação local e CLI compartilhada
 
----
+Após instalar o ambiente, execute `antares-fd doctor` e `antares-fd gui`.
+Consulte [GUI.md](GUI.md) para o fluxo atual e [MANUTENCAO.md](MANUTENCAO.md)
+para instalação travada e treinamento offline. Os comandos de scripts abaixo
+continuam disponíveis por compatibilidade.
 
-## 2. Criando um Novo Foguete
-Nunca altere ou trabalhe diretamente na pasta `00_Copy_This`. Ela é um *template* (molde).
+## 1. Instalar
 
-Para simular o seu foguete:
-1. Copie a pasta `Projects/00_Copy_This`.
-2. Cole e renomeie para o nome do seu projeto (exemplo: `Projects/Meu_Foguete`).
-
----
-
-## 3. Preenchendo os Parâmetros (A Engenharia)
-Na sua nova pasta `Projects/Meu_Foguete/config/`, você encontrará os arquivos `.yaml`. 
-Abra-os e preencha os dados físicos do seu foguete real.
-
-* **`launch.yaml`**: Local de lançamento, tamanho do trilho e ângulo.
-* **`motor.yaml`**: Massa do motor, curva de empuxo (aponte para o seu arquivo `.eng` na pasta `motors/`).
-* **`recovery.yaml`**: Tamanho dos paraquedas (Cd*S) e altitudes de acionamento.
-* **`vehicle.yaml`**: Geometria do foguete, massa (sem motor), inércia e dimensões das aletas.
-
-> **Regra de Ouro**: O sistema de unidades é **sempre SI** (metros, quilogramas, segundos). O referencial de posição é **Sempre do Bico para a Cauda** (Nose-to-Tail), sendo o bico o ponto `0.0`.
-
----
-
-## 4. Rodando a Simulação
-Com os dados preenchidos, basta pedir para o Python rodar o script principal do seu projeto. 
-Se estiver usando um terminal comum, ative o ambiente virtual antes:
+Na raiz do repositório, em Bash, com Python 3.12 ou superior:
 
 ```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt -e ".[dev]"
 source .venv/bin/activate
-python3 Projects/Meu_Foguete/simulations/nominal.py
 ```
 
-*Nota: Graças à nossa arquitetura, se você usa IDE (VS Code, PyCharm), você pode simplesmente abrir o arquivo `nominal.py` e clicar no botão "Play", pois a IDE detecta o `.venv` automaticamente.*
+Para Windows e configuração da IDE, consulte o [onboarding](ONBOARDING.md).
+Os comandos seguintes pressupõem o ambiente virtual ativado.
 
----
+## 2. Verificar o ambiente
 
-## 5. Analisando os Resultados
-Se tudo der certo, o terminal vai imprimir o **FLIGHT SUMMARY** (Resumo de Voo) mostrando o Apogeu, Velocidade Máxima, Mach e os tempos de abertura dos paraquedas.
+```bash
+python -m antares_fd.cli --help
+python -m pytest -q
+```
 
-Além disso, a simulação vai salvar automaticamente um arquivo **`trajectory.kml`** dentro da pasta do seu projeto. 
-* Pegue esse arquivo `.kml`.
-* Arraste para dentro da tela do **Google Earth** (pode ser a versão de navegador web).
-* Você verá a trajetória 3D exata do seu foguete renderizada sobre o mapa do local de lançamento!
+## 3. Preparar o projeto
+
+Para criar um foguete em Bash:
+
+```bash
+cp -R projects/00_Copy_This projects/meu_foguete
+```
+
+Use um destino novo. Revise os YAMLs em `projects/meu_foguete/config/`, a curva
+em `motors/` e as tabelas em `aero/`. Substitua os valores do exemplo pelos dados
+do veículo, inclusive os campos que já vêm preenchidos. Preserve informações
+desconhecidas como `null` até obter os dados necessários.
+
+Use unidades SI e posições do veículo medidas do bico para a cauda. Confira
+as unidades angulares e a orientação própria declarada para o motor.
+
+## 4. Executar o nominal
+
+```bash
+python projects/meu_foguete/simulations/nominal.py
+```
+
+O comando integra o voo e grava arquivos. Confira configuração meteorológica,
+disponibilidade das entradas, resumo no terminal e mensagens de exportação.
+
+## 5. Encontrar os resultados
+
+O programa informa o diretório criado em `results/<projeto>/<identificador>/`.
+Em um voo individual, procure `manifest.yaml`, `trajectory.kml` e, quando a
+geração terminar, `reports/flight_dynamics_report.pdf` e
+`reports/master_metrics.json`.
+
+O KML representa a trajetória simulada. A existência de um PDF não garante que
+toda a campanha terminou sem falhas; confira os manifestos e as mensagens.
+As saídas são ignoradas pelo Git e precisam ser compartilhadas separadamente.
+
+Para executar Monte Carlo, comparar cenários e auditar sensores, siga as
+seções correspondentes do [onboarding](ONBOARDING.md).

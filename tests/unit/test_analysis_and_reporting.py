@@ -4,12 +4,10 @@ Unit tests for Antares Flight Dynamics Analysis, Compliance, Provenance and PDF 
 
 from pathlib import Path
 import numpy as np
-import pytest
 
-from antares_fd.analysis.compliance import evaluate_compliance, ComplianceItem
+from antares_fd.analysis.compliance import evaluate_compliance
 from antares_fd.analysis.provenance import collect_reproducibility_data, evaluate_model_validity
 from antares_fd.analysis.sensitivity import analyze_monte_carlo_sensitivity
-from antares_fd.reporting.pdf_report import FlightDynamicsReport
 
 
 def test_compliance_evaluation_pass():

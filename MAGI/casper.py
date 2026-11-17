@@ -28,10 +28,21 @@ class MagiSchema:
 
     @staticmethod
     def create_empty(num_rows=0):
+        """Crie um DataFrame com o esquema atmosférico canônico.
+
+        Aloca num_rows linhas e as colunas declaradas em COLUMNS, inicialmente
+        sem valores. Retorna a tabela para preenchimento pelos produtores.
+        """
         return pd.DataFrame(index=range(num_rows), columns=MagiSchema.COLUMNS)
 
     @staticmethod
     def validate(df, *, allow_empty=False):
+        """Verifique presença das colunas e consistência física básica de um perfil.
+
+        Exige grandezas finitas, pressão e temperatura positivas e umidade relativa
+        em [0, 100]. Perfil vazio só é aceito com allow_empty=True.
+        Retorna True em sucesso ou lança ValueError sem modificar df.
+        """
         missing = set(MagiSchema.COLUMNS) - set(df.columns)
         if missing:
             raise ValueError(f"Missing schema columns: {sorted(missing)}")
@@ -62,6 +73,13 @@ class CasperPhysics:
 
     @staticmethod
     def calc_specific_humidity(pressure_pa, temp_k, rh_pct):
+        """Calcule umidade específica q em kg de vapor por kg de ar úmido.
+
+        Recebe pressão em Pa, temperatura em K e umidade relativa em %.
+        Converte pressão de saturação de hPa para Pa e aplica
+        q = epsilon*e / (p - (1-epsilon)*e). Rejeita p <= 0, RH fora de [0,100]
+        ou pressão de vapor que alcance a pressão total.
+        """
         p = np.asarray(pressure_pa)
         rh = np.asarray(rh_pct)
         e = rh / 100 * CasperPhysics.calc_vapor_pressure(temp_k) * 100  # hPa -> Pa
@@ -72,6 +90,12 @@ class CasperPhysics:
 
     @staticmethod
     def calc_rh_from_specific_humidity(pressure_pa, temp_k, q):
+        """Recupere umidade relativa em % a partir de q, pressão Pa e temperatura K.
+
+        Inverte a relação de umidade específica e divide a pressão parcial
+        pela saturação. Rejeita q fora de [0,1); não corta supersaturação,
+        que deve ser avaliada explicitamente pelo chamador.
+        """
         q = np.asarray(q)
         if np.any((q < 0) | (q >= 1)):
             raise ValueError("Specific humidity must be in [0, 1)")
@@ -82,24 +106,49 @@ class CasperPhysics:
 
     @staticmethod
     def virtual_temperature(temp_k, q):
+        """Calcule temperatura virtual em K para a equação do ar úmido.
+
+        Usa Tv = T * (1 + (1/epsilon - 1)*q), com q em kg/kg.
+        Aceita escalares ou arrays compatíveis por broadcasting NumPy.
+        """
         return np.asarray(temp_k) * (1 + (1 / CasperPhysics.EPSILON - 1) * np.asarray(q))
 
     @staticmethod
     def calc_density(pressure_pa, temp_k, rh_pct):
+        """Calcule densidade do ar úmido em kg/m³ pela equação de estado.
+
+        Deriva q de pressão Pa, temperatura K e RH %, obtém Tv
+        e retorna p/(R_ar*Tv). Propaga erros do cálculo de umidade.
+        """
         q = CasperPhysics.calc_specific_humidity(pressure_pa, temp_k, rh_pct)
         return np.asarray(pressure_pa) / (CasperPhysics.R_AIR * CasperPhysics.virtual_temperature(temp_k, q))
 
     @staticmethod
     def speed_dir_to_uv(speed, direction_from):
+        """Converta vento meteorológico para componentes leste/norte em m/s.
+
+        Recebe velocidade e direção de origem em graus; usa u=-V*sin(theta)
+        e v=-V*cos(theta). Retorna o par (u,v), escalar ou vetorizado.
+        """
         angle = np.radians(direction_from)
         return -speed * np.sin(angle), -speed * np.cos(angle)
 
     @staticmethod
     def uv_to_speed_dir(u, v):
+        """Converta componentes ENU em velocidade e direção meteorológica de origem.
+
+        Usa hypot(u,v) e atan2(-u,-v); normaliza o ângulo para [0,360).
+        Retorna (velocidade m/s, direção graus), preservando a forma dos arrays.
+        """
         return np.hypot(u, v), (np.degrees(np.arctan2(-u, -v)) + 360) % 360
 
     @staticmethod
     def calc_shear(u, v, z):
+        """Calcule a magnitude do gradiente vertical do vento horizontal em s⁻¹.
+
+        Recebe u e v em m/s e z em metros; combina gradientes NumPy por hypot.
+        Com menos de dois níveis, retorna NaN porque a derivada é indeterminada.
+        """
         if len(z) < 2:
             return np.full_like(z, np.nan, dtype=float)
         return np.hypot(np.gradient(u, z), np.gradient(v, z))
@@ -120,6 +169,11 @@ class CasperProcessor:
     HYDROSTATIC_CONSECUTIVE_LEVELS = 3
 
     def __init__(self, elevation_msl=450, surface_scenario="OPEN_TERRAIN"):
+        """Configure elevação MSL e hipótese explícita de rugosidade superficial.
+
+        Valida surface_scenario contra as opções conhecidas e armazena z0 em metros.
+        None proíbe extensão abaixo da primeira observação; cenário inválido gera erro.
+        """
         if surface_scenario not in self.SURFACE_ROUGHNESS and surface_scenario is not None:
             raise ValueError(f"Unknown surface scenario: {surface_scenario}")
         self.elevation_msl = elevation_msl
@@ -198,6 +252,11 @@ class CasperProcessor:
 
     @staticmethod
     def _derive(grid):
+        """Preencha grandezas derivadas de um perfil atmosférico interpolado.
+
+        Modifica grid com velocidade/direção do vento, q, densidade e cisalhamento.
+        Calcula gradiente somente onde há vento finito em pelo menos dois níveis.
+        """
         grid["wind_speed_mps"], grid["wind_direction_from_deg"] = CasperPhysics.uv_to_speed_dir(grid.u_east_mps, grid.v_north_mps)
         grid["specific_humidity_kg_kg"] = CasperPhysics.calc_specific_humidity(grid.pressure_pa, grid.temperature_k, grid.relative_humidity_pct)
         grid["density_kgm3"] = CasperPhysics.calc_density(grid.pressure_pa, grid.temperature_k, grid.relative_humidity_pct)
@@ -298,6 +357,11 @@ class CasperProcessor:
 class CasperVisuals:
     @staticmethod
     def plot_painel(df_atual, df_stats):
+        """Desenhe o painel simplificado dos perfis atmosféricos e históricos.
+
+        Usa df_atual e df_stats nas rotinas gráficas disponíveis; a visualização
+        não recalcula uma previsão nem modifica os dados de entrada.
+        """
         import matplotlib.pyplot as plt
         fig, axes = plt.subplots(1, 4, figsize=(16, 6))
         d = df_atual[df_atual.quality_flag != "OUT_OF_VERTICAL_RANGE"]

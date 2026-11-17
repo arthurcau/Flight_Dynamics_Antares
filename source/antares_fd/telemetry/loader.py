@@ -40,6 +40,11 @@ class ParsedTelemetry:
 
 
 def _sha256(path: Path) -> str:
+    """Calcule a identidade binária SHA-256 do registro bruto de telemetria.
+
+    Lê o arquivo em blocos sem normalizar linhas ou valores; retorna digest
+    hexadecimal e propaga falhas de leitura para preservar rastreabilidade.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):

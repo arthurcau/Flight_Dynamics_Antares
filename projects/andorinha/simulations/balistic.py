@@ -10,6 +10,12 @@ from antares_fd.simulation import execute_scenario
 
 
 def main():
+    """Execute o cenário balistic com a configuração do projeto.
+
+    Localiza o projeto por __file__, carrega YAMLs e chama o orquestrador
+    compartilhado. Retorna Flight e grava os artefatos previstos pelo executor;
+    não define constantes físicas adicionais neste ponto de entrada.
+    """
     return execute_scenario(load_project_config(PROJECT_DIR), PROJECT_DIR, scenario_id="ballistic")
 
 

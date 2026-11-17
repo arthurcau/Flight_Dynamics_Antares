@@ -91,6 +91,11 @@ def _flag(
     timestamp_value: float | None = None,
     details: dict[str, Any] | None = None,
 ) -> None:
+    """Acrescente um diagnóstico rastreável à lista de qualidade da telemetria.
+
+    Registra dataset_id, regra acionada, severidade, canal e posição da fonte.
+    Modifica rows; não remove nem corrige amostras do registro bruto.
+    """
     rows.append(
         {
             "dataset_id": dataset_id,
@@ -107,6 +112,11 @@ def _flag(
 
 
 def _finite_values(parsed: ParsedTelemetry, channel: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Extraia os valores numéricos finitos de um canal analisado.
+
+    Percorre ParsedTelemetry e retorna os escalares válidos para estatística;
+    os registros originais e as ausências continuam preservados no inventário.
+    """
     return [
         (record, record["values"][channel])
         for record in parsed.records
@@ -115,6 +125,11 @@ def _finite_values(parsed: ParsedTelemetry, channel: str) -> list[tuple[dict[str
 
 
 def _robust_spread(values: list[float]) -> float | None:
+    """Calcule uma medida robusta da dispersão de um conjunto numérico.
+
+    Usa mediana e desvios absolutos conforme a regra interna de diagnóstico,
+    reduzindo a influência de extremos sem editar as amostras.
+    """
     if not values:
         return None
     median = statistics.median(values)
@@ -122,6 +137,11 @@ def _robust_spread(values: list[float]) -> float | None:
 
 
 def _metadata_for_channel(channel: str, channels: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Resolva os metadados declarados de um canal.
+
+    Consulta channels pelo nome e preserva classificações desconhecidas
+    quando não há descrição explícita, sem inferir calibração.
+    """
     try:
         return channels[channel]
     except KeyError as exc:
@@ -162,11 +182,21 @@ def classify_gps(
     interval_start: dict[str, Any] | None = None
 
     def is_valid(record: dict[str, Any]) -> bool:
+        """Verifique somente os limites geográficos de um par latitude/longitude.
+
+        Aceita coordenadas numéricas presentes nos intervalos [-90, 90] e
+        [-180, 180]. Retorna bool; coordenadas no intervalo não comprovam fix GPS.
+        """
         lat = record["values"][latitude_channel]["numeric_value"]
         lon = record["values"][longitude_channel]["numeric_value"]
         return lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
 
     def boundary(record: dict[str, Any]) -> dict[str, Any]:
+        """Extraia o limite rastreável de um intervalo de coordenadas.
+
+        Retorna índice, linha da fonte e timestamp numérico do registro recebido.
+        Não interpola horários nem preenche ausência do canal temporal.
+        """
         time_cell = record.get("values", {}).get(timestamp_channel, {})
         source_value = time_cell.get("numeric_value")
         return {
@@ -184,12 +214,11 @@ def classify_gps(
             if not previous_valid:
                 interval_start = record
         elif previous_valid and interval_start is not None:
-            validity_intervals.append({"start": boundary(interval_start), "end": boundary(previous_record)})
+            validity_intervals.append({"start": boundary(interval_start), "end": boundary(valid_records[-1])})
             interval_start = None
         if record_index > 0 and current_valid != previous_valid:
             validity_transitions += 1
         previous_valid = current_valid
-        previous_record = record
     if previous_valid and interval_start is not None:
         validity_intervals.append({"start": boundary(interval_start), "end": boundary(record_list[-1])})
 

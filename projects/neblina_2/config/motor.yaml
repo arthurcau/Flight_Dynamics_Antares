@@ -1,0 +1,29 @@
+motor:
+  type: solid
+  thrust_source: null
+  dry_mass: 8.416
+  dry_inertia: null
+  center_of_dry_mass_position: null
+  grains_center_of_mass_position: null
+  grain_number: null
+  grain_separation: null
+  grain_density: 1815.0
+  grain_outer_radius: null
+  grain_initial_inner_radius: null
+  grain_initial_height: null
+  nozzle_radius: null
+  throat_radius: null
+  interpolation_method: linear
+  coordinate_system_orientation: combustion_chamber_to_nozzle
+  nozzle_position: null
+  design_envelope:
+    length_factor: 2.0
+    diameter_factor: 0.7
+    baseline: Neblina 1
+    status: USER_SPECIFIED_RELATIVE_GEOMETRY
+    absolute_length_m: null
+    absolute_diameter_m: null
+  provenance:
+    dry_mass: ASSUMED_SAME_AS_NEBLINA_1
+    grain_density: INHERITED_PENDING_MOTOR_DESIGN
+    thrust_source: PENDING_NEW_MOTOR_CURVE

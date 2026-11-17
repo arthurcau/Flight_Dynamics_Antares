@@ -46,6 +46,11 @@ class ModelVariant:
 
 
 def _nonempty_text(value: Any, field: str) -> str:
+    """Exija texto não vazio para identificar um campo de proveniência.
+
+    Valida o tipo e remove espaços externos; retorna o texto normalizado.
+    Ausência ou texto vazio gera ValueError com o nome field.
+    """
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be nonempty text")
     return value.strip()

@@ -16,7 +16,7 @@ import json
 import datetime
 import importlib.util
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import yaml
 
@@ -43,8 +43,8 @@ DETERMINISTIC_ENTRYPOINTS = (
     "only_reefing",
     "drogue_only",
 )
-# `separation_at_main_opening.py` is deliberately excluded: it removes an
-# assumed 2 kg before launch and does not model a timed separation event.
+# Não executar auxiliares fora desta lista. Os antigos exemplos de separação
+# foram removidos: subtraíam massa presumida antes da ignição, sem evento físico.
 MONTE_CARLO_ENTRYPOINTS = ("monte_carlo", "montecarlo")
 CAMPAIGN_ENVIRONMENT_KEYS = (
     "ANTARES_CAMPAIGN_DIR", "ANTARES_CAMPAIGN_ACTIVE", "ANTARES_CAMPAIGN_RUN_ID",

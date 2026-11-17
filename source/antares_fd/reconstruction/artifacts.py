@@ -24,6 +24,11 @@ PROCESSING_VERSION = "1.1"
 
 
 def _sha256(path: Path) -> str:
+    """Calcule a impressão digital SHA-256 de um arquivo de evidência.
+
+    Lê o conteúdo binário em blocos e retorna o digest hexadecimal; não modifica
+    o arquivo. Falhas de leitura são propagadas.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -32,6 +37,11 @@ def _sha256(path: Path) -> str:
 
 
 def _plot_altitude(frame: pd.DataFrame, events: dict, output: Path) -> None:
+    """Desenhe altitudes observadas com os eventos que têm suporte nos dados.
+
+    Usa frame e events para produzir o gráfico em output, preservando segmentos
+    de aquisição. Salva e fecha a figura; não calibra os sensores.
+    """
     import matplotlib
 
     matplotlib.use("Agg")

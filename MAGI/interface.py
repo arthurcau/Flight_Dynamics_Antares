@@ -12,11 +12,23 @@ from MAGI.casper import CasperProcessor, MagiSchema
 
 
 def _process_df_to_profile(frame, elevation, latitude, longitude):
+    """Converta uma tabela MAGI em contrato atmosférico para a dinâmica de voo.
+
+    Valida o esquema e as flags de qualidade, extrai arrays em SI e preserva
+    origem, instante, membro e metadados. Retorna AtmosphericProfile, cuja
+    validação rejeita dados inválidos. latitude/longitude identificam o local;
+    elevação já foi aplicada ao eixo MSL durante a interpolação.
+    """
     MagiSchema.validate(frame)
     accepted = {"VALID", "HYDROSTATIC_WARNING", "SYNTHETIC_SURFACE_LAYER"}
     if not frame.quality_flag.isin(accepted).all():
         raise ConfigurationError(f"MAGI profile rejected by quality control: {sorted(set(frame.quality_flag))}")
     def value(column, default=None):
+        """Leia o primeiro valor de um metadado do perfil.
+
+        Coluna ausente ou célula nula retorna default; caso contrário preserva
+        o valor registrado. A operação não preenche as séries físicas.
+        """
         item = frame[column].iloc[0] if column in frame else default
         return default if pd.isna(item) else item
 

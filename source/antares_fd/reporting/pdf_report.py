@@ -4,7 +4,6 @@ Constructs the deterministc PDF report using the strict, single-source-of-truth 
 also handling multiple campaigns and Monte Carlo statistics.
 """
 from pathlib import Path
-import shutil
 from typing import Any, Optional, Dict
 import json
 import dataclasses
@@ -12,12 +11,17 @@ import numpy as np
 
 from antares_fd.analysis.metrics import extract_flight_metrics
 from antares_fd.analysis.requirements import RequirementDB
-from antares_fd.reporting.builder import FlightDynamicsReportBuilder, ReportContext
+from antares_fd.reporting.builder import ReportContext
 from antares_fd.reporting.vector_report import VectorReportRenderer, _namespace
 
 class CustomJSONEncoder(json.JSONEncoder):
     """Handles serialization of dataclasses and numpy arrays for archiving."""
     def default(self, obj):
+        """Serialize dataclasses e objetos NumPy no arquivo de métricas.
+
+        Converte dataclass em dict, ndarray em lista e escalares NumPy em escalares
+        Python. Tipos não suportados seguem o erro padrão de JSONEncoder.
+        """
         if dataclasses.is_dataclass(obj):
             return dataclasses.asdict(obj)
         if isinstance(obj, np.ndarray):
@@ -32,19 +36,25 @@ class FlightDynamicsReport:
     Extracts DataClasses and restricts PDF building completely from the simulation object.
     """
     def __init__(self, flight: Any = None, config: Any = None, project_dir: Optional[Path] = None, mc_results_dir: Optional[Path] = None, run_id: str = "nominal", scenario_flights: Optional[Dict[str, Any]] = None, artifact_dir: Optional[Path] = None):
+        """Prepare um relatório a partir de voos ou de artefatos canônicos.
+
+        Extrai métricas uma vez para os voos recebidos; no modo artifact_dir, exige
+        master_metrics.json válido e não cria contexto que reavalie física.
+        Sem qualquer fonte de métricas, lança ValueError.
+        """
         self.flight = flight
         self.config = config
         self.project_dir = project_dir or Path.cwd()
         self.run_id = run_id
         self.mc_results_dir = mc_results_dir
         self.artifact_dir = Path(artifact_dir) if artifact_dir else None
-        
+
         # Scenario metrics mapping
         self.scenario_metrics = {}
         if scenario_flights:
             for name, f_obj in scenario_flights.items():
                 self.scenario_metrics[name] = extract_flight_metrics(f_obj, config=self.config, project_dir=self.project_dir)
-        
+
         if self.flight:
             self.metrics = extract_flight_metrics(self.flight, config=self.config, project_dir=self.project_dir)
         elif self.scenario_metrics:
@@ -55,11 +65,11 @@ class FlightDynamicsReport:
             self.metrics = _namespace(payload)
         else:
             raise ValueError("No Flight provided to report.")
-            
+
         # Phase 2: Load Requirements
-        req_yaml = self.project_dir.parents[1] / "source" / "antares_fd" / "reporting" / "data" / "requirements.yaml"
+        req_yaml = Path(__file__).with_name("data") / "requirements.yaml"
         self.req_db = RequirementDB(req_yaml)
-        
+
         # Artifact reports are intentionally renderer-only.  Constructing the
         # legacy ReportContext here would re-evaluate validity against a
         # partially populated namespace and could make a saved campaign
@@ -77,14 +87,14 @@ class FlightDynamicsReport:
         payload = _read_json_file(artifact_dir / "manifest.json") or _read_json_file(artifact_dir / "manifest.yaml") or {}
         run_id = payload.get("campaign_id") or payload.get("campaign", {}).get("run_id") or artifact_dir.name
         return cls(project_dir=project_dir or artifact_dir.parents[2], mc_results_dir=artifact_dir, run_id=run_id, artifact_dir=artifact_dir)
-        
+
     def generate(self, output_path: Path):
         """Build a vector PDF from canonical metrics and saved campaign data."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Export single-source-of-truth JSON
         json_path = output_path.parent / "master_metrics.json"
-        
+
         # We don't want to dump the entire timeseries array to JSON
         if dataclasses.is_dataclass(self.metrics):
             metrics_dict = dataclasses.asdict(self.metrics)
@@ -92,12 +102,12 @@ class FlightDynamicsReport:
             metrics_dict.pop("atmosphere", None)
         else:
             metrics_dict = _plain(vars(self.metrics))
-        
+
         if self.artifact_dir is None:
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(metrics_dict, f, cls=CustomJSONEncoder, indent=2)
             print(f"[Reporting] Master metrics saved: {json_path}")
-        
+
         renderer = VectorReportRenderer(self.metrics, self.project_dir, output_path, self.run_id, self.mc_results_dir, self.scenario_metrics)
         renderer.render()
         print(f"[Reporting] Vector engineering report generated: {output_path} ({renderer.pages} pages)")
@@ -105,6 +115,11 @@ class FlightDynamicsReport:
 
 
 def _read_json_file(path: Path):
+    """Leia metadados JSON opcionais de um caminho.
+
+    Retorna o conteúdo desserializado, ou None se a leitura ou sintaxe falhar.
+    Não deve ser usado para aceitar métricas obrigatórias incompletas.
+    """
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -120,6 +135,11 @@ def _load_artifact_metrics(path: Path) -> dict:
 
 
 def _plain(value):
+    """Converta namespaces aninhados em estruturas serializáveis.
+
+    Percorre dicts, sequências e atributos de objetos, preservando escalares.
+    A conversão recursiva cria estruturas novas e não modifica a entrada.
+    """
     if isinstance(value, dict):
         return {key: _plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):

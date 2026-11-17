@@ -6,7 +6,6 @@ For dates beyond the operational numerical forecast horizon, real historical
 profiles from past years are retrieved to construct an authentic multi-year ensemble.
 """
 
-import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -34,6 +33,11 @@ class Balthasar:
     FORECAST_MAX_DAYS_AHEAD = 14
 
     def __init__(self, cache_dir="dados_cache", elevation_msl=450, model=None):
+        """Configure a aquisição meteorológica e seu diretório de cache.
+
+        Resolve cache relativo ao módulo, armazena elevação MSL e modelo opcional
+        e cria o diretório. Inicializa metadados sem afirmar aquisição bem-sucedida.
+        """
         if not os.path.isabs(cache_dir):
             base_dir = os.path.dirname(os.path.abspath(__file__))
             self.cache_dir = os.path.join(base_dir, cache_dir)
@@ -47,6 +51,11 @@ class Balthasar:
 
     @staticmethod
     def _utc(value):
+        """Normalize um instante para Timestamp UTC com fuso explícito.
+
+        None seleciona o horário atual UTC; timestamp sem timezone gera ValueError.
+        O retorno é usado para comparar cobertura temporal e idade do cache.
+        """
         timestamp = pd.Timestamp.now(tz="UTC") if value is None else pd.Timestamp(value)
         if timestamp.tzinfo is None:
             raise ValueError("Forecast time must include an explicit UTC offset")
@@ -84,6 +93,14 @@ class Balthasar:
         return target.date() > (now + pd.Timedelta(days=self.FORECAST_MAX_DAYS_AHEAD)).date()
 
     def _load_payload(self, lat, lon, target, window_minutes=0):
+        """Obtenha a resposta meteorológica correspondente ao local e intervalo.
+
+        Valida coordenadas, monta a consulta Open-Meteo e calcula chave SHA-256.
+        Prefere cache recente; caso necessário consulta HTTP com timeout, valida
+        unidades/cobertura e salva o cache. Em falha de rede pode reutilizar cache
+        antigo identificado como tal; atualiza last_fetch_metadata sem renovar
+        artificialmente o instante da aquisição.
+        """
         if not np.isfinite([lat, lon, self.elevation_msl]).all() or not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise ValueError("Valid latitude, longitude and elevation are required")
         span = pd.Timedelta(minutes=window_minutes / 2) + pd.Timedelta(hours=1)
@@ -210,6 +227,11 @@ class Balthasar:
         return df
 
     def _fetch_open_meteo(self, lat, lon, target_date_str):
+        """Converta uma consulta determinística em perfil atmosférico MAGI.
+
+        Normaliza o instante, obtém payload por rede/cache e usa o conversor comum
+        com verificação de unidades. Retorna DataFrame com metadados de aquisição.
+        """
         target = self._utc(target_date_str)
         payload = self._load_payload(lat, lon, target)
         df = self._profile_from_payload(payload, target, lat, lon)
@@ -351,11 +373,12 @@ class Balthasar:
         print(f"BALTHASAR-2: Conectando a AviationWeather.gov para atualizar METAR/TAF de {aeroportos}...")
         METAR_CACHE = os.path.join(self.cache_dir, "metar_cache.txt")
         TAF_CACHE = os.path.join(self.cache_dir, "taf_cache.txt")
-        
+
         has_internet = False
         try:
             # Lightweight connectivity check using DNS socket ping
-            socket.create_connection(("1.1.1.1", 53), timeout=1.5)
+            with socket.create_connection(("1.1.1.1", 53), timeout=1.5):
+                pass
             has_internet = True
         except OSError:
             try:
@@ -388,22 +411,14 @@ class Balthasar:
 
         return metars, tafs
 
-    def _fetch_inmet_surface(self):
-        raise NotImplementedError("INMET acquisition is not implemented")
-
-    def _fetch_goes_satellite(self):
-        raise NotImplementedError("GOES acquisition is not implemented")
-
-    def _fetch_radiosonde_data(self):
-        raise NotImplementedError("Radiosonde acquisition is not implemented")
-
-    def _fetch_previous_model_runs(self):
-        raise NotImplementedError("Previous-run comparison is not implemented")
-
-
 class BalthasarVisuals:
     @staticmethod
     def print_aerodrome_report(metars, tafs):
+        """Formate observações METAR e previsões TAF em Markdown.
+
+        Percorre as listas de boletins e indica indisponibilidade quando vazias.
+        Retorna uma string; não consulta rede e não imprime diretamente.
+        """
         md_output = "### 🛫 Observações Atuais (METAR)\n"
         if metars:
             for m in metars:

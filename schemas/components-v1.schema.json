@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Inventário de componentes Antares v1",
+  "type": "object",
+  "required": ["schema_version", "coverage", "components"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "coverage": {"enum": ["PARTIAL", "COMPLETE"]},
+    "components": {
+      "type": "array", "maxItems": 10000,
+      "items": {
+        "type": "object", "required": ["id"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "name": {"type": "string"},
+          "category": {"enum": ["structure", "electronics", "payload", "recovery", "motor", "other"]},
+          "included": {"type": "boolean"},
+          "mass_kg": {"type": ["number", "null"], "minimum": 0},
+          "axial_position_m": {"type": ["number", "null"]},
+          "radial_position_m": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+          "inertia_model": {"enum": ["provided", "point_mass", "solid_cylinder", "hollow_cylinder", "box"]},
+          "inertia_kg_m2": {"type": ["array", "null"], "minItems": 6, "maxItems": 6, "items": {"type": "number"}},
+          "geometry": {"type": "object", "additionalProperties": {"type": ["number", "null"], "minimum": 0}},
+          "provenance": {"type": "object", "properties": {"type": {"enum": ["MEASURED", "CALCULATED", "ASSUMED", "UNKNOWN"]}, "source": {"type": "string"}}}
+        }
+      }
+    }
+  }
+}

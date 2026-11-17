@@ -16,10 +16,10 @@ def _summarize_metric(values: pd.Series, metric: str) -> tuple[int, float | None
 def generate_latex_report(config, results_dir: Path, run_id: str):
     """Write the report from saved configuration and results, with a text fallback."""
     print("[Report] Generating LaTeX report...")
-    
+
     # --- 1. Extract Config & Variations ---
     mc_cfg = config.monte_carlo if config.monte_carlo else {}
-    
+
     variations_text = ""
     for category, params in mc_cfg.items():
         if isinstance(params, dict):
@@ -49,7 +49,7 @@ def generate_latex_report(config, results_dir: Path, run_id: str):
                     std_text = f"{std_val:.2f}" if std_val is not None else "N/A"
                     results_text += f"{col.replace('_', ' ').title()} & {count} & {mean_text} & {std_text} \\\\\n"
             results_text += "\\hline\n\\end{tabular}\n\\caption{Monte Carlo Summary Statistics}\n\\end{table}\n"
-    
+
     # --- 3. LaTeX Template ---
     latex_content = f"""\\documentclass[12pt,a4paper]{{article}}
 \\usepackage[utf8]{{inputenc}}
@@ -120,9 +120,9 @@ The statistical summary of the landing dispersion and flight parameters is prese
     tex_file = results_dir / f"report_{run_id}.tex"
     with open(tex_file, "w") as f:
         f.write(latex_content)
-        
+
     print(f"[Report] LaTeX source saved to {tex_file}")
-    
+
     # Try to compile
     try:
         subprocess.run(["pdflatex", "-interaction=nonstopmode", tex_file.name], cwd=str(results_dir), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -131,19 +131,19 @@ The statistical summary of the landing dispersion and flight parameters is prese
         if isinstance(e, FileNotFoundError):
             print("[Report] Warning: 'pdflatex' compiler not found on this system. Saving report as .txt fallback...")
         else:
-            print(f"[Report] Warning: pdflatex compilation failed. Saving report as .txt fallback...")
-        
+            print("[Report] Warning: pdflatex compilation failed. Saving report as .txt fallback...")
+
         txt_file = results_dir / f"report_{run_id}.txt"
         with open(txt_file, "w") as f_txt:
             f_txt.write("MONTE CARLO FLIGHT DYNAMICS REPORT\n")
             f_txt.write("="*40 + "\n\n")
-            
+
             f_txt.write("1. SIMULATION SETUP\n")
             f_txt.write("-" * 20 + "\n")
             f_txt.write(f"Run ID: {run_id}\n")
             f_txt.write(f"Simulations: {mc_cfg.get('num_simulations', 'Unknown')}\n")
             f_txt.write(f"Seed: {mc_cfg.get('random_seed', 'Unknown')}\n\n")
-            
+
             f_txt.write("2. VARIED PARAMETERS\n")
             f_txt.write("-" * 20 + "\n")
             for category, params in mc_cfg.items():
@@ -157,7 +157,7 @@ The statistical summary of the landing dispersion and flight parameters is prese
                         else:
                             f_txt.write(f"  - {param}: {vals}\n")
             f_txt.write("\n")
-            
+
             f_txt.write("3. RESULTS SUMMARY\n")
             f_txt.write("-" * 20 + "\n")
             if 'df' in locals():
@@ -170,7 +170,7 @@ The statistical summary of the landing dispersion and flight parameters is prese
                             f"{col.replace('_', ' ').title()}: N = {count} | "
                             f"Mean = {mean_text} | Std Dev = {std_text}\n"
                         )
-            
+
             f_txt.write("\n(Check the results directory for the PDF dispersion plots)\n")
-        
+
         print(f"[Report] Plain text report saved to {txt_file}")

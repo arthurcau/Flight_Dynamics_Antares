@@ -22,6 +22,11 @@ class Alignment:
     uncertainty_s: float
 
     def __post_init__(self) -> None:
+        """Valide a transformação temporal declarada para comparar séries.
+
+        Exige deslocamento finito e justificativa de alinhamento compatível
+        com o tipo informado. Falhas geram ValueError antes da interpolação.
+        """
         if not isinstance(self.segment_id, int) or self.segment_id < 0:
             raise ValueError("segment_id must be a nonnegative integer")
         if any(not math.isfinite(value) for value in (
@@ -44,6 +49,11 @@ class ComparisonBasis:
     evidence: str
 
     def __post_init__(self) -> None:
+        """Valide unidades e referenciais usados na comparação experimental.
+
+        Exige a base declarada das grandezas e sua proveniência, evitando
+        comparar séries com origens físicas diferentes sem indicação explícita.
+        """
         fields = (
             self.observed_unit, self.simulated_unit, self.observed_frame,
             self.simulated_frame, self.evidence,
@@ -60,6 +70,12 @@ class ComparisonBasis:
 
 
 def _array(values: Sequence[float], name: str) -> np.ndarray:
+    """Converta uma sequência em vetor numérico unidimensional não vazio.
+
+    Usa dtype float e rejeita arrays vazios ou com mais de uma dimensão.
+    Erro identifica name. Finitude e suporte de interpolação são tratados
+    posteriormente pelo comparador.
+    """
     array = np.asarray(values, dtype=float)
     if array.ndim != 1 or array.size == 0:
         raise ValueError(f"{name} must be a nonempty one-dimensional series")

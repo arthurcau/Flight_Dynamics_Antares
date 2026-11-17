@@ -10,6 +10,12 @@ from antares_fd.config.exceptions import ConfigurationError
 
 
 def _thrust_source(source, project_dir):
+    """Resolva a fonte de empuxo declarada sem inventar uma curva.
+
+    Aceita os formatos suportados pelo construtor, verifica arquivos relativos
+    a project_dir e rejeita fontes ausentes com ConfigurationError. Retorna
+    a fonte que será entregue ao SolidMotor.
+    """
     if not isinstance(source, str):
         return source
     path = Path(project_dir) / source

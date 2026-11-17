@@ -1,4 +1,9 @@
-"""Run nominal RocketPy Monte Carlo cases and standalone report artifacts."""
+"""Motor legado mantido para consumidores e testes de compatibilidade.
+
+Entradas CLI/GUI e scripts de projeto usam monte_carlo_failure, que registra
+falhas e estatísticas pelo mesmo contrato. Não adicione regras físicas aqui;
+migrações de consumidores externos exigem comparar formatos de artefatos.
+"""
 
 import datetime
 from pathlib import Path
@@ -8,15 +13,15 @@ import numpy as np
 import random
 import os
 
-from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
+from antares_fd.builders import build_motor, build_vehicle, add_recovery_system
 from antares_fd.config.exceptions import ConfigurationError
 from antares_fd.simulation.monte_carlo_parameters import launch_angle_distribution
 from antares_fd.simulation.monte_carlo_storage import CampaignManager
 
-from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
+from rocketpy import StochasticSolidMotor, StochasticRocket, StochasticFlight
 
 from antares_fd.simulation.monte_carlo_patch import _transfer_rocket_components, ProfileStochasticEnvironment, ConfiguredMonteCarlo
-from antares_fd.simulation.runner import run_flight, flight_options
+from antares_fd.simulation.runner import run_flight
 from antares_fd.simulation.monte_carlo_resume import restore_jsonl_case_logs
 
 
@@ -31,7 +36,7 @@ def execute_monte_carlo(config, project_dir):
     mc_cfg = config.monte_carlo if config.monte_carlo else {}
     if not mc_cfg:
         raise ConfigurationError("Monte Carlo configuration (monte_carlo.yaml) is missing or empty.")
-        
+
     num_sims = int(mc_cfg.get("num_simulations", 10))
     seed = mc_cfg.get("random_seed", 42)
     scenario_id = os.environ.get("ANTARES_MC_SCENARIO", "nominal")
@@ -41,18 +46,18 @@ def execute_monte_carlo(config, project_dir):
     # Force seed reproducibility
     np.random.seed(seed)
     random.seed(seed)
-    
+
     from antares_fd.builders.environment import build_environment, build_environment_ensemble
-    
+
     print("[Monte Carlo] Building Nominal Models and Stochastics...")
     # Get nominal env for vehicle builder, and the ensemble list for Monte Carlo
     nominal_env = build_environment(config.environment, config.launch)
     env_ensemble = build_environment_ensemble(config.environment, config.launch)
-    
+
     env_cfg = mc_cfg.get("environment") or {}
     user_wx_std = (env_cfg.get("wind_velocity_x") or {}).get("factor_std", 0.0)
     user_wy_std = (env_cfg.get("wind_velocity_y") or {}).get("factor_std", 0.0)
-    
+
     stoch_env = ProfileStochasticEnvironment(
         environment=nominal_env, profiles=env_ensemble,
         wind_velocity_x_factor=(1.0, user_wx_std),
@@ -63,7 +68,7 @@ def execute_monte_carlo(config, project_dir):
     motor = build_motor(config.motor, project_dir)
     mot_cfg = mc_cfg.get("motor") or {}
     imp_std_factor = (mot_cfg.get("total_impulse_scale") or {}).get("std", 0.0)
-    
+
     stoch_motor = StochasticSolidMotor(
         motor,
         total_impulse=(motor.total_impulse, motor.total_impulse * imp_std_factor) if imp_std_factor else None,
@@ -72,7 +77,7 @@ def execute_monte_carlo(config, project_dir):
     # 3. Vehicle
     rocket = build_vehicle(config.vehicle, motor, project_dir)
     add_recovery_system(rocket, config.recovery)
-    
+
     veh_cfg = mc_cfg.get("vehicle") or {}
     mass_std = (veh_cfg.get("mass") or {}).get("std", 0.0)
     drag_off_std = (veh_cfg.get("power_off_drag_factor") or {}).get("std", 0.0)
@@ -89,7 +94,6 @@ def execute_monte_carlo(config, project_dir):
     # Transfer aero surfaces and parachutes to stochastic rocket
     _transfer_rocket_components(rocket, stoch_rocket)
 
-    rail_len = (config.launch.get("rail") or {}).get("length", 5.2)
     inc = (config.launch.get("rail") or {}).get("inclination_deg", 85.0)
     hdg = (config.launch.get("rail") or {}).get("heading_deg", 0.0)
 
@@ -117,9 +121,9 @@ def execute_monte_carlo(config, project_dir):
         run_id = f"{run_timestamp}_{project_dir.name}_montecarlo"
         results_dir = project_dir.parents[0].parent / "results" / project_dir.name / run_id
         results_dir.mkdir(parents=True, exist_ok=True)
-    
+
     filename = str(results_dir / "mc_sim")
-    
+
     # 6. Run Monte Carlo
 
     mc = ConfiguredMonteCarlo(
@@ -131,9 +135,14 @@ def execute_monte_carlo(config, project_dir):
     )
     manager = None
     all_flights = []
-    
+
     _orig_run_single = mc._MonteCarlo__run_single_simulation
     def _patched_run_single(*args, **kwargs):
+        """Capture a trajetória compacta após cada caso RocketPy executado.
+
+        Delega ao executor original e armazena os vetores necessários aos gráficos.
+        Retorna o mesmo Flight ao consumidor; a captura é um efeito auxiliar.
+        """
         flt = _orig_run_single(*args, **kwargs)
         try:
             # We only extract what's needed for plotting to avoid pickle issues over IPC
@@ -147,7 +156,7 @@ def execute_monte_carlo(config, project_dir):
         return flt
     mc._MonteCarlo__run_single_simulation = _patched_run_single
     # -------------------------------------------------------
-    
+
 
     # Checkpointing Logic
     outputs_file_path = results_dir / "mc_sim.outputs.txt"
@@ -166,7 +175,7 @@ def execute_monte_carlo(config, project_dir):
         manager = CampaignManager()
         manager.start()
         all_flights = manager.TrajectoryStore(seed)
-    
+
     try:
         if remaining_sims <= 0:
             print(f"[Monte Carlo] All {num_sims} simulations already completed in previous run. Skipping simulation.")
@@ -186,7 +195,7 @@ def execute_monte_carlo(config, project_dir):
         if manager is not None:
             manager.shutdown()
 
-    
+
     # 7. Write Manifest and Traceability
     try:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(project_dir)).decode().strip()
@@ -220,7 +229,7 @@ def execute_monte_carlo(config, project_dir):
             "trajectory_policy": "four_endpoint_extrema_plus_five_reservoir_samples",
         },
     }
-    
+
     with open(results_dir / "manifest.yaml", "w") as f:
         yaml.dump(manifest, f, default_flow_style=False)
 
@@ -229,9 +238,9 @@ def execute_monte_carlo(config, project_dir):
             f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{num_sims} "
             f"simulations exported. Check worker errors and results in {results_dir}."
         )
-        
+
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
-    
+
     # 8. Generate Dispersion Plots
     from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions, plot_monte_carlo_convergence
     outputs_file = results_dir / "mc_sim.outputs.txt"

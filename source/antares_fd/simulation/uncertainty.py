@@ -18,20 +18,40 @@ class UncertaintyDef:
 
     @property
     def provenance_type(self) -> str:
+        """Retorne a classificação de origem da incerteza.
+
+        Consulta provenance.type e retorna UNKNOWN quando ausente, sem promover
+        a distribuição a uma medição experimental.
+        """
         return str(self.provenance.get("type", "UNKNOWN"))
 
     @property
     def correlation_group(self) -> str | None:
+        """Retorne o grupo de correlação declarado nos parâmetros.
+
+        Consulta params sem inferir dependências; ausência retorna None.
+        O metadado não implementa por si só uma distribuição multivariada.
+        """
         return self.params.get("correlation_group")
 
     @property
     def epistemic_or_aleatory(self) -> str:
+        """Retorne a natureza epistemológica declarada da incerteza.
+
+        Lê params.epistemic_or_aleatory e conserva UNKNOWN se não houver
+        classificação explícita; não classifica automaticamente a variável.
+        """
         return str(self.params.get("epistemic_or_aleatory", "UNKNOWN"))
 
 class UncertaintyRegistry:
     """Load and validate enabled uncertainty definitions from project YAML."""
 
     def __init__(self, yaml_path: Path):
+        """Inicialize e carregue o registro de incertezas de yaml_path.
+
+        Prepara versão de esquema e mapeamento de definições, depois chama load.
+        Erros de leitura ou formato interrompem a criação do registro.
+        """
         self.yaml_path = yaml_path
         self.schema_version = 1
         self.registry: Dict[str, UncertaintyDef] = {}
@@ -41,14 +61,14 @@ class UncertaintyRegistry:
         """Read the uncertainty YAML and populate enabled parameter definitions."""
         with open(self.yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-            
+
         self.schema_version = data.get("schema_version", 1)
         uncs = data.get("uncertainties", {})
-        
+
         for k, v in uncs.items():
             if not v.get("enabled", True):
                 continue
-                
+
             self.registry[k] = UncertaintyDef(
                 name=k,
                 enabled=True,
@@ -80,6 +100,11 @@ class UncertaintyRegistry:
 class SamplingPlan:
     """Pre-generates all N samples deterministically before touching RocketPy."""
     def __init__(self, registry: UncertaintyRegistry, num_samples: int, seed: int = 42, env_ensemble_size: int = 0):
+        """Prepare uma população reprodutível antes de integrar trajetórias.
+
+        Armazena registro, número de casos, semente e tamanho do ensemble;
+        valida distribuições e gera a tabela samples com case_id e seed estáveis.
+        """
         self.registry = registry
         self.num_samples = num_samples
         self.seed = seed
@@ -89,6 +114,12 @@ class SamplingPlan:
         self._generate()
 
     def _generate(self):
+        """Gere uma linha por caso com um fluxo aleatório independente.
+
+        SeedSequence deriva sementes filhas da semente raiz; cada Generator
+        amostra todas as definições habilitadas daquele caso. Substitui samples
+        pelo DataFrame completo, preservando a ordem dos IDs.
+        """
         root = np.random.SeedSequence(self.seed)
         children = root.spawn(self.num_samples)
         rows = []
@@ -131,6 +162,11 @@ class SamplingPlan:
         raise ValueError(f"Unsupported distribution: {uncertainty.distribution}")
 
     def export(self, path: Path):
+        """Exporte a população amostrada para Parquet ou CSV conforme a extensão.
+
+        Parquet usa pyarrow e compressão zstd; os demais caminhos recebem CSV.
+        Não inclui índice pandas; erros de escrita são propagados ao chamador.
+        """
         path = Path(path)
         if path.suffix.lower() == ".parquet":
             self.samples.to_parquet(path, engine="pyarrow", compression="zstd", index=False)

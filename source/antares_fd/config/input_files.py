@@ -9,6 +9,11 @@ import yaml
 
 
 def _project_file(project_dir: Path, relative: Any) -> Path:
+    """Resolva uma referência de entrada dentro do diretório do projeto.
+
+    Normaliza relative e verifica contenção e existência do arquivo. Retorna
+    Path ou lança ValueError ou FileNotFoundError, evitando snapshots de caminhos externos.
+    """
     if not isinstance(relative, str) or not relative.strip():
         raise ValueError("Model input path must be nonempty relative text")
     project_root = project_dir.resolve()
@@ -21,6 +26,11 @@ def _project_file(project_dir: Path, relative: Any) -> Path:
 
 
 def _mapping(path: Path) -> dict[str, Any]:
+    """Leia um documento YAML que deve conter um mapeamento.
+
+    Usa safe_load no arquivo path e rejeita estruturas incompatíveis. O retorno
+    é usado apenas para descobrir entradas referenciadas pelo modelo.
+    """
     value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(value, dict):
         raise ValueError(f"Model configuration must contain a mapping: {path}")

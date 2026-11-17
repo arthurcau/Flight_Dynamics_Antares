@@ -1,6 +1,4 @@
-import datetime
 import pandas as pd
-import pytest
 from MAGI.balthasar import Balthasar
 from MAGI.interface import get_atmospheric_profile, get_atmospheric_ensemble
 

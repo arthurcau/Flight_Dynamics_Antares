@@ -20,6 +20,11 @@ from antares_fd.simulation.campaign import run_project_campaign
 
 
 def main():
+    """Execute a campanha consolidada do projeto.
+
+    Delega ao controlador compartilhado a seleção dos cenários, organização
+    de resultados e geração de relatório. Os YAMLs fornecem os dados físicos.
+    """
     simulations_dir = Path(__file__).resolve().parent
     run_project_campaign(simulations_dir)
 

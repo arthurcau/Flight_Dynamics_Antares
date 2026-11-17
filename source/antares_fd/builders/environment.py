@@ -21,12 +21,23 @@ class ProfileVariable:
     values: np.ndarray
 
     def __call__(self, altitude):
+        """Interpole uma variável atmosférica na altitude ASL solicitada.
+
+        Usa interpolação linear em altitude e mantém o valor do primeiro nível abaixo
+        do solo para os passos do integrador. Acima da cobertura, lança
+        AtmosphereUnavailableError; aceita altitude escalar ou vetor em metros.
+        """
         if np.any(np.asarray(altitude) > self.altitude[-1]):
             raise AtmosphereUnavailableError(f"Flight exceeded atmospheric coverage ({self.altitude[-1]} m ASL)")
         return np.interp(altitude, self.altitude, self.values)
 
 
 def _base_environment(launch_config):
+    """Construa o ambiente geográfico e sua data UTC a partir do lançamento.
+
+    Valida latitude, longitude, elevação e data/hora; aplica o fuso declarado
+    e instancia Environment com o datum configurado. Não consulta meteorologia.
+    """
     if not launch_config:
         raise ConfigurationError("launch_config is required to build Environment")
     site = launch_config.get("site", {})
@@ -49,6 +60,11 @@ def _base_environment(launch_config):
 
 
 def _weather_time(config, launch_config, environment):
+    """Resolva o instante meteorológico em formato ISO 8601 UTC.
+
+    Usa target_date/target_time quando declarados; caso contrário usa a data
+    do ambiente. Datas sem offset recebem o fuso do lançamento explicitamente.
+    """
     date, time = config.get("target_date"), config.get("target_time")
     if date is None:
         return environment.datetime_date.isoformat()
@@ -62,6 +78,13 @@ def _weather_time(config, launch_config, environment):
 
 
 def _apply_profile(env, profile):
+    """Aplique um AtmosphericProfile validado a um Environment RocketPy.
+
+    Exige cobertura do solo, instala interpoladores sem extrapolação superior
+    e recalcula densidade, som e viscosidade. Com umidade, corrige somente
+    a densidade pela equação do ar úmido. Modifica e retorna env, registrando
+    a proveniência e os limites verticais em antares_atmosphere.
+    """
     z = np.asarray(profile.altitude_asl_m)
     if z[0] > env.elevation:
         raise AtmosphereUnavailableError("Atmospheric profile does not cover the launch elevation")
@@ -95,6 +118,12 @@ def _apply_profile(env, profile):
 
 
 def _build_environments(environment_config, launch_config, ensemble):
+    """Construa ambientes independentes para o perfil nominal ou ensemble.
+
+    Seleciona atmosfera padrão ou MAGI conforme environment_config. Falhas
+    meteorológicas abortam com AtmosphereUnavailableError, salvo fallback
+    explicitamente habilitado e registrado. Retorna lista de Environment.
+    """
     config = environment_config or {"type": "standard_atmosphere"}
     env = _base_environment(launch_config)
     kind = str(config.get("type", "standard_atmosphere")).lower()
@@ -133,6 +162,11 @@ def _build_environments(environment_config, launch_config, ensemble):
 
 
 def build_environment(environment_config, launch_config):
+    """Retorne o ambiente nominal definido pelos YAMLs de atmosfera e lançamento.
+
+    Delega ao construtor comum com ensemble=False e retorna o primeiro perfil.
+    Erros de configuração ou de cobertura são propagados ao chamador.
+    """
     return _build_environments(environment_config, launch_config, ensemble=False)[0]
 
 

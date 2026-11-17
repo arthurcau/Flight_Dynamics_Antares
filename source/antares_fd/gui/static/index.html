@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="antares-token" content="__ANTARES_TOKEN__" />
+    <title>Antares · Dinâmica de voo</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#workspace">Pular para a área de trabalho</a>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Antares, início"
+        ><svg viewBox="0 0 38 42" aria-hidden="true">
+          <path
+            d="M19 3 34 36H4Z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          />
+          <path d="m19 16 9 20H10Z" fill="currentColor" />
+          <path d="M19 31v10" stroke="#fb923c" stroke-width="3" /></svg
+        ><span>ANTARES<small>DINÂMICA DE VOO</small></span></a
+      >
+      <div class="sidebar-label">
+        WORKSPACE LOCAL <span class="connection-dot" aria-hidden="true"></span>
+      </div>
+      <label for="project-select" class="project-label">Projeto ativo</label>
+      <select id="project-select" aria-label="Selecionar projeto">
+        <option>Carregando…</option>
+      </select>
+      <button id="new-project" class="sidebar-new">＋ Novo foguete</button>
+      <nav id="navigation" aria-label="Áreas do projeto">
+        <button data-tab="overview" class="nav-item active">
+          <span aria-hidden="true">◈</span> Visão geral
+        </button>
+        <button data-tab="components" class="nav-item">
+          <span aria-hidden="true">▤</span> Componentes
+        </button>
+        <button data-tab="parameters" class="nav-item">
+          <span aria-hidden="true">⚙</span> Parâmetros
+        </button>
+        <button data-tab="simulation" class="nav-item">
+          <span aria-hidden="true">↗</span> Simular
+        </button>
+        <button data-tab="results" class="nav-item">
+          <span aria-hidden="true">⌁</span> Resultados
+        </button>
+        <button data-tab="data" class="nav-item">
+          <span aria-hidden="true">▦</span> Dados e fontes
+        </button>
+        <button data-tab="history" class="nav-item">
+          <span aria-hidden="true">↺</span> Histórico
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="help-button">
+          Guia de trabalho <span aria-hidden="true">↗</span></button
+        ><small>Modelos rastreáveis.<br />Conhecimento que permanece.</small>
+      </div>
+    </aside>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <span class="breadcrumb">Projetos / </span
+          ><span id="header-project">—</span>
+        </div>
+        <span id="environment-state" class="environment-state"
+          >Verificando ambiente…</span
+        >
+      </header>
+      <main id="workspace" tabindex="-1">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow" id="page-eyebrow">ESTAÇÃO DE ENGENHARIA</p>
+            <h1 id="page-title">Visão geral</h1>
+            <p id="page-description">Carregando o projeto…</p>
+          </div>
+          <div class="heading-actions">
+            <button id="import-button" class="button secondary">
+              Importar OpenRocket</button
+            ><button id="validate-button" class="button">
+              Validar projeto
+            </button>
+          </div>
+        </div>
+        <div id="notice" role="status" aria-live="polite" hidden></div>
+        <section id="panel" aria-label="Conteúdo da área selecionada">
+          <div class="loading" role="status">
+            Carregando as entradas do projeto…
+          </div>
+        </section>
+      </main>
+      <footer class="workspace-footer">
+        <span id="revision-label">Revisão —</span
+        ><span>SI · origem no bico · eixo longitudinal em direção à cauda</span>
+      </footer>
+    </div>
+    <dialog id="modal" aria-labelledby="modal-title">
+      <form id="modal-form">
+        <div class="modal-heading">
+          <h2 id="modal-title"></h2>
+          <button
+            type="button"
+            id="modal-close"
+            class="icon-button"
+            aria-label="Fechar diálogo"
+          >
+            ×
+          </button>
+        </div>
+        <div id="modal-content"></div>
+        <p id="modal-error" role="alert" class="error-text"></p>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="button secondary">
+            Cancelar</button
+          ><button id="modal-submit" type="submit" class="button">
+            Continuar
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <input type="file" id="ork-file" accept=".ork,.gz,.xml" hidden />
+  </body>
+</html>
