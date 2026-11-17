@@ -2,7 +2,6 @@
 Unit tests for AtmosphericScoring in MAGI.
 """
 
-import pytest
 import numpy as np
 import pandas as pd
 import sys

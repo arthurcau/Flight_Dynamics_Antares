@@ -17,18 +17,39 @@ from antares_fd.config.exceptions import ConfigurationError
 class ProfileStochasticEnvironment(StochasticEnvironment):
     """Sample a whole profile with a seeded generator; avoid mutating inputs."""
     def __init__(self, environment, profiles=None, **kwargs):
+        """Inicialize o adaptador com os perfis atmosféricos completos disponíveis.
+
+        Delega parâmetros estocásticos à classe base e mantém environment como
+        perfil único quando profiles não é informado. Nenhum perfil é sorteado aqui.
+        """
         super().__init__(environment, **kwargs)
         self._profiles = profiles or [environment]
         self._selected_profile = None
 
     def _set_stochastic(self, seed=None):
+        """Reinicialize os geradores estocásticos com a semente do caso.
+
+        Configura a classe base e cria um Generator NumPy exclusivo para selecionar
+        o perfil inteiro, mantendo reprodução independente do escalonamento.
+        """
         super()._set_stochastic(seed)
         self._profile_rng = np.random.default_rng(seed)
 
     def set_profile(self, profile):
+        """Fixe o perfil previamente selecionado pela população canônica.
+
+        Armazena profile para o próximo create_object; None restaura a seleção
+        por sorteio. Não modifica o Environment recebido.
+        """
         self._selected_profile = profile
 
     def create_object(self):
+        """Crie um ambiente amostrado sem modificar o perfil de origem.
+
+        Escolhe o perfil prescrito ou sorteado, faz deepcopy e atualiza os campos
+        de vento usados pela classe base. Retorna o ambiente amostrado e registra
+        a seleção em last_rnd_dict para rastreabilidade.
+        """
         index = int(self._profile_rng.integers(len(self._profiles)))
         profile = self._selected_profile if self._selected_profile is not None else self._profiles[index]
         self.obj = copy.deepcopy(profile)
@@ -42,6 +63,12 @@ class ProfileStochasticEnvironment(StochasticEnvironment):
 class ConfiguredMonteCarlo(MonteCarlo):
     """Preserve all nominal solver settings when RocketPy builds each case."""
     def _MonteCarlo__run_single_simulation(self):
+        """Construa um voo amostrado preservando as opções numéricas nominais.
+
+        Obtém parâmetros do StochasticFlight, repõe tolerâncias e limites de passo
+        e cria Flight com foguete e ambiente amostrados. Retorna o voo integrado;
+        o nome privado acompanha o ponto de extensão da versão RocketPy utilizada.
+        """
         nominal = self.flight.obj
         parameters = next(self.flight.dict_generator())
         parameters.update({key: getattr(nominal, key) for key in
@@ -58,6 +85,11 @@ class LengthDefinedStochasticFins(StochasticTrapezoidalFins):
     deterministic constructor requires only one. Nominal length is preserved.
     """
     def create_object(self):
+        """Reconstrua aletas trapezoidais usando comprimento de enflechamento.
+
+        Copia os parâmetros sorteados e remove sweep_angle para não fornecer
+        duas definições geométricas incompatíveis ao construtor TrapezoidalFins.
+        """
         values = dict(next(self.dict_generator()))
         values.pop("sweep_angle", None)
         return TrapezoidalFins(**values)

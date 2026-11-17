@@ -1,0 +1,10 @@
+schema_version: 1
+model:
+  stage: DESIGN
+  name: Neblina_2
+  baseline:
+    project: neblina_1
+    revision: 767b7ec27eba1a3f0b1ab829fc01398ed552cac446c05ed97310fd567b22d4a2
+  notes: Aguardando arquivo OpenRocket do Neblina 1 e revisão das alterações solicitadas
+    para Neblina 2.
+  pending_import: true

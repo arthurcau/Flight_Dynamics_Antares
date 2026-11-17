@@ -3,7 +3,6 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 import datetime
-import os
 
 MAGI_ROCKETPY_MAPPING = {
     "time": "time",
@@ -25,6 +24,11 @@ class RocketPyEnsembleExporter:
     Exports MAGI xarray ensembles to a RocketPy-compatible NetCDF format.
     """
     def __init__(self, config=None):
+        """Configure as opções do exportador de ensembles RocketPy.
+
+        Armazena config opcional para uso durante validação e exportação;
+        não cria arquivo NetCDF durante a inicialização.
+        """
         self.config = config or {}
 
     def validate_dataset(self, ds: xr.Dataset):
@@ -42,17 +46,23 @@ class RocketPyEnsembleExporter:
 
         if not (-90 <= ds.latitude.min() <= 90 and -90 <= ds.latitude.max() <= 90):
             raise ValueError("latitude coordinate out of bounds [-90, 90]")
-        
+
         required_vars = ["temperature", "geopotential_height", "u_wind", "v_wind"]
         for var in required_vars:
             if var not in ds.variables:
                 raise ValueError(f"Missing required variable: {var}")
-            
+
             if ds[var].isnull().any():
                 warnings.warn(f"Variable {var} contains NaNs. RocketPy might interpolate or fail.")
         return True
 
     def export(self, ensemble_ds: xr.Dataset, filename: str, naming: str = "native"):
+        """Valide e grave um cubo atmosférico em NetCDF para RocketPy.
+
+        Recebe ensemble_ds e filename, verifica o contrato físico e escolhe
+        nomes de variáveis segundo naming. Preserva coordenadas e metadados;
+        falhas de validação ou escrita são propagadas.
+        """
         self.validate_dataset(ensemble_ds)
         ds_out = ensemble_ds.copy()
 
@@ -103,45 +113,45 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     """
     if not ensemble:
         raise ValueError("No ensemble members provided.")
-        
+
     df0 = ensemble[0]
     df0 = df0.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
-    
+
     if 'valid_time_utc' not in df0.columns:
         raise ValueError("Missing valid_time_utc in ensemble members.")
-    
+
     base_time = pd.to_datetime(df0['valid_time_utc'].iloc[0]).tz_localize(None)
-    
+
     num_timestamps = int(round(horizon_hours / timestep_hours)) + 1
     step_delta = pd.Timedelta(hours=timestep_hours)
     time_array = pd.date_range(start=base_time, periods=num_timestamps, freq=step_delta)
-    
+
     pressure_levels = df0['pressure_pa'].values / 100.0 # Convert Pa to hPa
-    
+
     nz = len(pressure_levels)
     num_members = len(ensemble)
     nt = len(time_array)
-    
+
     center_lat = df0['latitude'].iloc[0] if 'latitude' in df0.columns else -21.895
     center_lon = df0['longitude'].iloc[0] if 'longitude' in df0.columns else -48.966
-    
+
     delta_deg = 0.1
     lat_array = np.array([center_lat - delta_deg, center_lat, center_lat + delta_deg])
     lon_array = np.array([center_lon - delta_deg, center_lon, center_lon + delta_deg])
-    
+
     nx = len(lon_array)
     ny = len(lat_array)
-    
+
     shape = (num_members, nt, nz, ny, nx)
-    
+
     temp_arr = np.zeros(shape)
     hgt_arr = np.zeros(shape)
     u_arr = np.zeros(shape)
     v_arr = np.zeros(shape)
-    
+
     for i, df in enumerate(ensemble):
         df_valid = df.dropna(subset=['pressure_pa', 'temperature_k', 'u_east_mps', 'v_north_mps'])
-        
+
         t_prof = df_valid['temperature_k'].values
         u_prof = df_valid['u_east_mps'].values
         v_prof = df_valid['v_north_mps'].values
@@ -149,13 +159,13 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
             z_prof = df_valid['altitude_msl_m'].values
         else:
             z_prof = df_valid['altitude_agl_m'].values
-            
+
         # Fast vectorized broadcasting across time and spatial coordinates
         temp_arr[i, :, :, :, :] = t_prof[None, :, None, None]
         u_arr[i, :, :, :, :] = u_prof[None, :, None, None]
         v_arr[i, :, :, :, :] = v_prof[None, :, None, None]
         hgt_arr[i, :, :, :, :] = z_prof[None, :, None, None]
-            
+
     ds = xr.Dataset(
         coords={
             "member": np.arange(num_members),
@@ -165,42 +175,42 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
             "longitude": lon_array
         }
     )
-    
+
     ds.pressure_level.attrs["units"] = "hPa"
     ds.latitude.attrs["units"] = "degrees_north"
     ds.longitude.attrs["units"] = "degrees_east"
-    
+
     ds["temperature"] = (("member", "time", "pressure_level", "latitude", "longitude"), temp_arr)
     ds["geopotential_height"] = (("member", "time", "pressure_level", "latitude", "longitude"), hgt_arr)
     ds["u_wind"] = (("member", "time", "pressure_level", "latitude", "longitude"), u_arr)
     ds["v_wind"] = (("member", "time", "pressure_level", "latitude", "longitude"), v_arr)
-            
+
     ds["temperature"].attrs.update({"units": "K"})
     ds["geopotential_height"].attrs.update({"units": "m"})
     ds["u_wind"].attrs.update({"units": "m/s"})
     ds["v_wind"].attrs.update({"units": "m/s"})
-    
+
     ds.attrs['forecast_horizon_hours'] = horizon_hours
     ds.attrs['temporal_resolution_hours'] = timestep_hours
     ds.attrs['ensemble_members'] = num_members
     ds.attrs['forecast_reference_time'] = base_time.isoformat()
-    
+
     exporter = RocketPyEnsembleExporter()
     exported_file = exporter.export(ds, output)
-    
+
     with xr.open_dataset(exported_file) as ds_reopen:
         t_vals = ds_reopen.time.values
-        
+
         if len(t_vals) < 2:
             if horizon_hours > 0:
                 raise ValueError(f"Expected multiple timestamps, got {len(t_vals)}")
         else:
             total_duration_ns = int(np.timedelta64(t_vals[-1] - t_vals[0], 'ns').astype('timedelta64[ns]').astype(int))
             expected_duration_ns = pd.Timedelta(hours=horizon_hours).value
-            
+
             if abs(total_duration_ns - expected_duration_ns) > 1e6:
                 raise ValueError(f"Round-trip time validation failed. Expected {horizon_hours}h duration, got {total_duration_ns} ns")
-                
+
             step_ns = int(np.timedelta64(t_vals[1] - t_vals[0], 'ns').astype('timedelta64[ns]').astype(int))
             expected_step_ns = pd.Timedelta(hours=timestep_hours).value
             if abs(step_ns - expected_step_ns) > 1e6:
@@ -209,4 +219,9 @@ def export_rocketpy_ensemble(ensemble, output="MAGI_ensemble.nc", horizon_hours=
     return exported_file
 
 def dataframes_to_rocketpy_dataset(*args, **kwargs):
+    """Rejeite a antiga interface de conversão de DataFrames.
+
+    Sempre lança DeprecationWarning como exceção, indicando ao chamador
+    que deve usar export_rocketpy_ensemble. Não converte dados nem grava arquivo.
+    """
     raise DeprecationWarning("Use export_rocketpy_ensemble instead.")

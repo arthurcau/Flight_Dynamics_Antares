@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+target-version = "py312"
+include = ["*.py"]
+extend-exclude = [".venv", "build", "results", "data", "dados_cache", "MAGI/dados_cache"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "E722", "W605"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "MAGI/tests"]
+pythonpath = ["source", ".", "MAGI"]
+markers = ["gui: fluxo renderizado que requer Playwright e Chromium"]

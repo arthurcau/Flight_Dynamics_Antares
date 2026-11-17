@@ -1,4 +1,3 @@
-import pytest
 import numpy as np
 import pandas as pd
 import sys
@@ -22,7 +21,7 @@ def test_speed_dir_to_uv():
     u, v = CasperPhysics.speed_dir_to_uv(10, 90)
     assert np.isclose(u, -10.0)
     assert np.isclose(v, 0.0)
-    
+
     # Wind from 180 (South) -> going North
     # U should be 0, V should be positive
     u, v = CasperPhysics.speed_dir_to_uv(10, 180)
@@ -42,20 +41,42 @@ def test_density_calculation():
     rho = CasperPhysics.calc_density(101325, 288.15, 0.0)
     assert np.isclose(rho, 1.225, atol=0.01)
 
-def test_melchior_integration():
-    melchior = Melchior(elevation_msl=450)
+def test_melchior_integration(tmp_path):
+    """Um cache ausente deve produzir esquema vazio sem alterar dados locais."""
+    melchior = Melchior(cache_dir=tmp_path, elevation_msl=450)
     df_hist = melchior.fetch_historical_data()
     # It might be empty if cache doesn't exist, but if it doesn't fail, we're good.
     MagiSchema.validate(df_hist, allow_empty=True)
+    assert df_hist.empty
+    assert not (tmp_path / "historico_openmeteo.csv").exists()
 
-def test_balthasar_integration():
-    balthasar = Balthasar(elevation_msl=450)
-    df_curr, is_real = balthasar.fetch_operational_forecast()
-    # In fallback mock, df_curr is the dataframe
-    if is_real:
-        MagiSchema.validate(df_curr[0])
-    else:
-        MagiSchema.validate(df_curr)
+def test_balthasar_integration(tmp_path, monkeypatch):
+    """Valide aquisição, cache e unidades com resposta HTTP determinística."""
+    balthasar = Balthasar(cache_dir=tmp_path, elevation_msl=450)
+    target = pd.Timestamp.now(tz="UTC").floor("h")
+    units = {"temperature": "°C", "wind_speed": "m/s", "wind_direction": "°",
+             "geopotential_height": "m", "relative_humidity": "%"}
+    hourly = {"time": [target.isoformat(), (target + pd.Timedelta(hours=1)).isoformat()]}
+    hourly_units = {}
+    for level, height, temperature in ((1000, 500, 20), (900, 1400, 14)):
+        for variable, value in {"temperature": temperature, "wind_speed": 5,
+                                "wind_direction": 90, "geopotential_height": height,
+                                "relative_humidity": 50}.items():
+            key = f"{variable}_{level}hPa"
+            hourly[key] = [value, value]
+            hourly_units[key] = units[variable]
+    from unittest.mock import Mock
+    response = Mock()
+    response.json.return_value = {"hourly": hourly, "hourly_units": hourly_units}
+    request = Mock(return_value=response)
+    monkeypatch.setattr("balthasar.requests.get", request)
+    df_curr, is_real = balthasar.fetch_operational_forecast(target_date_str=target.isoformat())
+    assert not is_real  # A previsão determinística não vira ensemble nativo.
+    assert MagiSchema.validate(df_curr)
+    assert len(df_curr) == 2
+    assert df_curr.u_east_mps.iloc[0] == -5
+    assert list(tmp_path.glob("forecast_*.json"))
+    request.assert_called_once()
 
 def test_casper_interpolation():
     df_raw = MagiSchema.create_empty(2)
@@ -71,11 +92,11 @@ def test_casper_interpolation():
     df_raw['data_type'] = 'synthetic'
     df_raw['model_name'] = 'test_model'
     df_raw['ensemble_member'] = 'control'
-    
+
     processor = CasperProcessor(elevation_msl=450)
     grid = np.arange(0, 1001, 100)
     df_interp = processor.interpolate_profile(df_raw, grid)
-    
+
     assert len(df_interp) == 11
     MagiSchema.validate(df_interp)
     assert 'VALID' in df_interp['quality_flag'].values

@@ -16,6 +16,11 @@ class TrajectoryStore:
     """
 
     def __init__(self, seed=42):
+        """Inicialize o armazenamento limitado de trajetórias de diagnóstico.
+
+        Define capacidades de extremos e amostras, listas internas e contadores.
+        A retenção é independente do número total de casos executados.
+        """
         self._rng = random.Random(seed)
         self._lock = Lock()
         self._count = 0
@@ -23,6 +28,11 @@ class TrajectoryStore:
         self._sample = []
 
     def append(self, trajectory):
+        """Incorpore uma trajetória mantendo apenas extremos e amostras limitadas.
+
+        Atualiza o contador de casos vistos e seleciona registros para visualização
+        conforme a capacidade. Modifica o armazenamento; não altera o voo original.
+        """
         x, y = trajectory["x"][-1], trajectory["y"][-1]
         with self._lock:
             self._count += 1
@@ -43,6 +53,11 @@ class TrajectoryStore:
                     self._sample[slot] = entry
 
     def snapshot(self):
+        """Retorne uma cópia compacta das trajetórias retidas e dos contadores.
+
+        Agrupa extremos e amostras em um dicionário serializável para consumo
+        fora do processo gerenciador. Não entrega o objeto completo de cada Flight.
+        """
         with self._lock:
             unique = dict(entry for _, entry in self._extremes.values())
             unique.update(self._sample)

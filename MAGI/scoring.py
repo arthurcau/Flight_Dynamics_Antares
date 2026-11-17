@@ -5,7 +5,7 @@ WARNING: This module provides atmospheric comparison and diagnostic ranking only
 It does NOT constitute launch authorization.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
@@ -18,13 +18,13 @@ except ImportError:
 class AtmosphericScoring:
     """
     Computes an exploratory atmospheric favorability score (0 to 100) for launch operations.
-    
+
     The score evaluates:
     1. Wind speed profile against historical local percentiles (P50, P90, P99) [up to 35 pts]
     2. Wind shear profile against historical local percentiles [up to 25 pts]
     3. Forecast ensemble spread / uncertainty (P90 - P10) [up to 20 pts]
     4. Weather model score & data quality score [up to 20 pts]
-    
+
     Vertical profiles are evaluated level-by-level with a composite formula:
     - 50% weight on the column-averaged profile (weighted towards the surface layer).
     - 50% weight on the critical worst-layer condition (weakest-link principle for rocketry:

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openrocket version="1.9" creator="Antares deterministic test fixture">
+  <rocket><name>Fixture de importação — não é um foguete operacional</name><id>rocket</id>
+    <subcomponents><stage><id>stage</id><name>Stage</name><subcomponents>
+      <bodytube><id>body</id><name>Body tube</name><length>1.0</length><radius>0.05</radius><thickness>0.005</thickness><material type="bulk" density="1000">Fixture material</material><subcomponents>
+        <masscomponent><id>payload</id><name>Payload</name><mass>4.0</mass><packedlength>0.1</packedlength><packedradius>0.02</packedradius><axialoffset method="top">0.2</axialoffset></masscomponent>
+      </subcomponents></bodytube>
+    </subcomponents></stage></subcomponents>
+  </rocket>
+</openrocket>

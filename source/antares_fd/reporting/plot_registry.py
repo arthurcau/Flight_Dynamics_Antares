@@ -20,19 +20,19 @@ from antares_fd.storage import read_jsonl_objects
 
 def _get_flight_events(metrics: FlightMetrics) -> List[tuple[float, str]]:
     """Extracts key event timestamps from FlightMetrics."""
-    events = [(0.0, "Launch"), (metrics.rail_exit_time, "Rail Exit"), 
+    events = [(0.0, "Launch"), (metrics.rail_exit_time, "Rail Exit"),
               (metrics.burnout_time, "Burnout"), (metrics.apogee_time, "Apogee")]
-    
+
     if metrics.drogue_event:
         events.append((metrics.drogue_event.time, f"{metrics.drogue_event.name} Trigger"))
         if metrics.drogue_event.lag > 0.05:
             events.append((metrics.drogue_event.deploy_time, f"{metrics.drogue_event.name} Open"))
-            
+
     if metrics.main_event:
         events.append((metrics.main_event.time, f"{metrics.main_event.name} Trigger"))
         if metrics.main_event.lag > 0.05:
             events.append((metrics.main_event.deploy_time, f"{metrics.main_event.name} Open"))
-            
+
     events.append((metrics.flight_duration, "Touchdown"))
     events.sort(key=lambda x: x[0])
     return events
@@ -54,6 +54,13 @@ def _add_event_lines(ax, events: List[tuple[float, str]], max_t: Optional[float]
 
 
 def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de empuxo, razão empuxo/peso, consumo de massa e impulso acumulado.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     g0 = 9.80665
     t_bo = metrics.burnout_time
@@ -63,10 +70,10 @@ def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path
     t_eval = ts.time[mask]
     thrust_vals = ts.thrust[mask]
     mass_vals = ts.mass[mask]
-    
+
     prop_vals = np.maximum(0.0, mass_vals - metrics.burnout_mass)
     tw_vals = thrust_vals / (mass_vals * g0)
-    
+
     dt = np.diff(t_eval, prepend=0)
     cum_impulse = np.cumsum(thrust_vals * dt)
 
@@ -112,6 +119,13 @@ def generate_mass_and_propulsion_chart(metrics: FlightMetrics, output_path: Path
 
 
 def generate_kinematics_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de altitude, velocidade e aceleração ao longo do voo.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     events = _get_flight_events(metrics)
     t_cutoff = metrics.apogee_time * 1.15
@@ -171,6 +185,13 @@ def generate_kinematics_chart(metrics: FlightMetrics, output_path: Path) -> Path
 
 
 def generate_propulsion_and_loads_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de pressão dinâmica e cargas aerodinâmicas após a saída da rampa.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     events = _get_flight_events(metrics)
     ts = metrics.timeseries
@@ -232,6 +253,13 @@ def generate_propulsion_and_loads_chart(metrics: FlightMetrics, output_path: Pat
 
 
 def generate_stability_and_attitude_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de CG, CP, margem estática e ângulo de ataque.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     events = _get_flight_events(metrics)
     t_cutoff = metrics.apogee_time * 1.15
@@ -285,6 +313,13 @@ def generate_stability_and_attitude_chart(metrics: FlightMetrics, output_path: P
 
 
 def generate_full_atmosphere_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de temperatura, pressão, densidade e vento do perfil atmosférico usado.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     atm = metrics.atmosphere
     z_agl = atm.altitude_agl
@@ -339,6 +374,13 @@ def generate_full_atmosphere_chart(metrics: FlightMetrics, output_path: Path) ->
 
 
 def generate_recovery_descent_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de altitude e velocidade de descida com os eventos de recuperação.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     events = _get_flight_events(metrics)
     t_apogee = metrics.apogee_time
@@ -375,6 +417,13 @@ def generate_recovery_descent_chart(metrics: FlightMetrics, output_path: Path) -
 
 
 def generate_trajectory_views_chart(metrics: FlightMetrics, output_path: Path) -> Path:
+    """Gere o gráfico de trajetória em vistas lateral e do plano de solo.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.5, 3.5))
 
@@ -414,6 +463,13 @@ def generate_trajectory_views_chart(metrics: FlightMetrics, output_path: Path) -
 
 
 def generate_multi_scenario_chart(scenario_metrics: Dict[str, FlightMetrics], output_path: Path) -> Path:
+    """Gere o gráfico de comparação das séries canônicas entre cenários.
+
+    Recebe FlightMetrics (ou mapeamento por cenário) e output_path; usa
+    as séries e eventos já extraídos, sem acessar o integrador RocketPy.
+    Salva a figura vetorial, fecha recursos gráficos e retorna seu caminho.
+    Unidades e instantes seguem o contrato canônico das métricas.
+    """
     setup_matplotlib_theme()
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7.5, 5.2))
 

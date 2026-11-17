@@ -34,8 +34,8 @@ STATUS_FAIL_FG = colors.HexColor("#991B1B")
 STATUS_INFO_BG = colors.HexColor("#E0F2FE")
 STATUS_INFO_FG = colors.HexColor("#075985")
 
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate, Paragraph
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
 from pathlib import Path
 
 
@@ -54,6 +54,11 @@ def save_figure(fig, output_path: Path, preview: bool = True) -> Path:
     return pdf_path
 
 def setup_report_styles():
+    """Crie os estilos de texto usados nas seções ReportLab.
+
+    Instancia ParagraphStyle para títulos, corpo e células com fontes, cores
+    e espaçamentos consistentes. Retorna o StyleSheet1.
+    """
     from reportlab.lib.styles import StyleSheet1
     styles = StyleSheet1()
     styles.add(ParagraphStyle(name="CoverTitle", fontName="Helvetica-Bold", fontSize=24, leading=28, alignment=1, spaceAfter=20, textColor=NAVY_PRIMARY))
@@ -67,19 +72,34 @@ def setup_report_styles():
 
 class BaseReportDocTemplate(BaseDocTemplate):
     def handle_pageBegin(self):
+        """Inicie uma página conforme o ciclo de vida de BaseDocTemplate.
+
+        Delega ao método da classe base para manter a paginação ReportLab
+        e seus eventos de página.
+        """
         self._handle_pageBegin()
     def build(self, flowables, **kwargs):
+        """Monte o PDF e instale o rodapé de identificação em cada página.
+
+        Define o callback footer e delega a construção da sequência flowables
+        a BaseDocTemplate, passando as opções recebidas.
+        """
         self._calc()
         frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height, id="normal")
-        
+
         def footer(canvas, doc):
+            """Desenhe o rodapé da página no canvas ReportLab.
+
+            Preserva e restaura o estado gráfico, escreve identificação e número
+            de página usando o documento recebido; não altera os dados do relatório.
+            """
             canvas.saveState()
             canvas.setFont("Helvetica", 8)
             canvas.setFillColor(GRAY_TEXT)
             canvas.drawString(doc.leftMargin, doc.bottomMargin - 0.5 * 28.35, "Antares Flight Dynamics Automated Report")
             canvas.drawRightString(doc.pagesize[0] - doc.rightMargin, doc.bottomMargin - 0.5 * 28.35, f"Page {doc.page}")
             canvas.restoreState()
-            
+
         self.addPageTemplates([PageTemplate(id="First", frames=frame, onPage=footer)])
         super().build(flowables, **kwargs)
 

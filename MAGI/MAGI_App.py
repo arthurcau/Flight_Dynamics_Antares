@@ -3,10 +3,10 @@
 
 # # 🧙‍♂️ MAGI: Vertical Atmospheric Model
 # *(Formerly Neblina) - Stage 3: Operational Robustness & NetCDF Export*
-# 
+#
 # **⚠️ WARNING: Atmospheric comparison only — not a launch authorisation.**
-# 
-# This is the main orchestration script for the MAGI system. 
+#
+# This is the main orchestration script for the MAGI system.
 # It relies on the core physics modules and the Stage 3 operational layers:
 # - **MELCHIOR-1**, **BALTHASAR-2**, **CASPER-3**
 # - **StateManager**: Handles CACHE_FRESH, DEGRADED_DATA, etc.
@@ -28,17 +28,17 @@ warnings.filterwarnings('ignore')
 
 # Import MAGI Subsystems with dual-path fallback
 try:
-    from MAGI.melchior import Melchior, MelchiorVisuals
-    from MAGI.balthasar import Balthasar, BalthasarVisuals
-    from MAGI.casper import CasperProcessor, CasperVisuals, CasperPhysics, MagiSchema
+    from MAGI.melchior import Melchior
+    from MAGI.balthasar import Balthasar
+    from MAGI.casper import CasperProcessor, MagiSchema
     from MAGI.state_manager import StateManager
     from MAGI.scoring import AtmosphericScoring
     from MAGI.exporter import NetCDFExporter
     from MAGI.visuals import CasperVisualsV3, VisualManager
 except ImportError:
-    from melchior import Melchior, MelchiorVisuals
-    from balthasar import Balthasar, BalthasarVisuals
-    from casper import CasperProcessor, CasperVisuals, CasperPhysics, MagiSchema
+    from melchior import Melchior
+    from balthasar import Balthasar
+    from casper import CasperProcessor, MagiSchema
     from state_manager import StateManager
     from scoring import AtmosphericScoring
     from exporter import NetCDFExporter

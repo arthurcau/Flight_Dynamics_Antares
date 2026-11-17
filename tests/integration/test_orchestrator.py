@@ -1,5 +1,3 @@
-import pytest
-from pathlib import Path
 from antares_fd.simulation.orchestrator import execute_scenario
 from antares_fd.config.models import ProjectConfig, ConfigDict
 
@@ -9,7 +7,7 @@ def test_nominal_orchestration_mocked(tmp_path):
     the environment, motor, and vehicle without blowing up, given
     a valid (but minimal) mocked configuration.
     """
-    
+
     # Create minimal mock config mimicking what the loader outputs
     config = ProjectConfig(
         vehicle=ConfigDict({
@@ -76,9 +74,9 @@ def test_nominal_orchestration_mocked(tmp_path):
         simulation=ConfigDict({}),
         monte_carlo=ConfigDict({})
     )
-    
+
     # We pass tmp_path as the project_dir. The orchestrator will attempt
     # to export trajectory maps here.
     flight = execute_scenario(config, project_dir=tmp_path, print_summary=False, export_kml=False)
-    
+
     assert flight is not None

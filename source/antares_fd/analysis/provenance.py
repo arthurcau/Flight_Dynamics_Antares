@@ -123,6 +123,11 @@ def _read_yaml(path: Path) -> Dict[str, Any]:
 
 
 def _value_at(data: Dict[str, Any], *keys: str) -> Any:
+    """Consulte uma sequência de chaves sem criar dados ausentes.
+
+    Percorre os dicionários em data seguindo keys e retorna None quando um nível
+    não existe ou não é um mapeamento; não modifica a configuração.
+    """
     value: Any = data
     for key in keys:
         if not isinstance(value, dict):
@@ -132,6 +137,11 @@ def _value_at(data: Dict[str, Any], *keys: str) -> Any:
 
 
 def _display_value(value: Any) -> str:
+    """Converta um valor de proveniência em texto de apresentação.
+
+    Dicionários e listas são serializados em JSON ordenado; escalares usam str.
+    O resultado é apenas visual e não altera a evidência original.
+    """
     if value is None or value == "":
         return "NOT PROVIDED"
     return str(value)

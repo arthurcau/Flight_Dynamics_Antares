@@ -1,0 +1,108 @@
+schema_version: 1
+coverage: PARTIAL
+components:
+- id: payload
+  name: Payload
+  category: payload
+  included: true
+  mass_kg: 4.0
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: ASSUMED
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 1.0
+- id: electronics
+  name: Eletrônica
+  category: electronics
+  included: true
+  mass_kg: null
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: UNKNOWN
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 1.0
+- id: electronics_cage
+  name: Gaiola da eletrônica
+  category: structure
+  included: true
+  mass_kg: null
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: UNKNOWN
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 0.95
+- id: couplers
+  name: Acopladores
+  category: structure
+  included: true
+  mass_kg: null
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: UNKNOWN
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 0.95
+- id: bulkheads
+  name: Bulkheads
+  category: structure
+  included: true
+  mass_kg: null
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: UNKNOWN
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 0.95
+- id: ejection
+  name: Sistema de ejeção
+  category: structure
+  included: true
+  mass_kg: null
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: UNKNOWN
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 0.95
+- id: remaining_structure
+  name: Demais componentes estruturais
+  category: structure
+  included: true
+  mass_kg: null
+  axial_position_m: null
+  radial_position_m:
+  - 0
+  - 0
+  inertia_model: provided
+  inertia_kg_m2: null
+  provenance:
+    type: UNKNOWN
+    source: Solicitação do usuário; preencher usando o gêmeo digital
+  design_mass_factor: 0.95

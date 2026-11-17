@@ -13,6 +13,12 @@ current_type = None
 current_lines = []
 
 def add_cell():
+    """Acrescente ao notebook a célula acumulada do aplicativo MAGI.
+
+    Lê current_lines e current_type do escopo do script; remove marcadores
+    de comentário para Markdown e conserva código em células próprias.
+    Ignora conteúdo vazio e modifica nb.cells, sem executar a célula.
+    """
     if not current_lines:
         return
     text = "".join(current_lines).strip()

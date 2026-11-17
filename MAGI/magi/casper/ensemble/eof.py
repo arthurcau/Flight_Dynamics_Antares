@@ -5,14 +5,14 @@ Provides spectral decomposition and perturbation routines for vertical atmospher
 state vectors: [u(z), v(z), T(z), q(z)]^T.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 
 def compute_covariance(df_nominal, altitude_grid):
     """
     Interface hook for covariance computation.
-    
+
     In the MAGI architecture, full climatological covariance estimation is performed
     by MELCHIOR using Ledoit-Wolf shrinkage.
     """
@@ -33,12 +33,12 @@ def apply_eof_perturbation(
 ) -> Optional[List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]]]:
     """
     Apply EOF/PCA-based stochastic perturbations to a nominal vertical atmospheric profile.
-    
+
     Perturbs state vector X = [u, v, T, q]^T (or [u, v, T]^T if 3-variable covariance is provided)
     using the spectral decomposition of the covariance matrix:
         Sigma = V * Lambda * V^T
         perturbation = V * sqrt(Lambda) * xi,  where xi ~ N(0, I)
-    
+
     Parameters
     ----------
     nominal_profile : dict
@@ -56,7 +56,7 @@ def apply_eof_perturbation(
         Number of vertical grid levels.
     num_members : int
         Number of perturbed ensemble members to generate.
-        
+
     Returns
     -------
     list of tuple or None
@@ -73,7 +73,7 @@ def apply_eof_perturbation(
     # Enforce exact matrix symmetry before eigenvalue decomposition
     sym_cov = (cov_matrix + cov_matrix.T) / 2.0
     eigenvalues, eigenvectors = np.linalg.eigh(sym_cov)
-    
+
     # Regularize eigenvalues (numerical jitter floor to prevent negative variances)
     eigenvalues = np.maximum(eigenvalues, 0.0)
     scale = np.sqrt(eigenvalues)

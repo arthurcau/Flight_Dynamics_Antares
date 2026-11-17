@@ -12,12 +12,12 @@ import subprocess
 import numpy as np
 import random
 import os
-import copy
 import traceback
 import types
+from typing import Any
 import pandas as pd
 
-from antares_fd.builders import build_environment, build_motor, build_vehicle, add_recovery_system
+from antares_fd.builders import build_motor, build_vehicle, add_recovery_system
 from antares_fd.config.exceptions import ConfigurationError
 from antares_fd.simulation.monte_carlo_storage import CampaignManager, TrajectoryStore
 from antares_fd.simulation.monte_carlo_parameters import launch_angle_distribution
@@ -32,10 +32,12 @@ from antares_fd.simulation.monte_carlo_resume import restore_jsonl_case_logs
 from antares_fd.simulation.uq_pipeline import finalize_campaign_analysis
 from antares_fd.simulation.scenarios import apply_scenario, SCENARIOS, NOMINAL
 
-from rocketpy import Flight, StochasticEnvironment, StochasticSolidMotor, StochasticRocket, StochasticFlight, MonteCarlo
+from rocketpy import Flight, StochasticSolidMotor, StochasticRocket, StochasticFlight
+# Interface também utilizada por consumidores que instrumentam simulate.
+from rocketpy import MonteCarlo as MonteCarlo
 
 from antares_fd.simulation.monte_carlo_patch import _transfer_rocket_components, ProfileStochasticEnvironment, ConfiguredMonteCarlo
-from antares_fd.simulation.runner import run_flight, flight_options
+from antares_fd.simulation.runner import run_flight
 
 
 
@@ -123,7 +125,7 @@ def _failure_records(mc, samples, requested):
         if case_id not in successful_ids
     ]
 
-def execute_monte_carlo(config, project_dir):
+def execute_monte_carlo(config, project_dir, *, workspace_root=None, archive_atmospheres=False):
     """Run a stochastic scenario while retaining failures and resume state.
 
     The uncertainty registry creates the case population before RocketPy runs.
@@ -133,7 +135,7 @@ def execute_monte_carlo(config, project_dir):
     mc_cfg = config.monte_carlo if config.monte_carlo else {}
     if not mc_cfg:
         raise ConfigurationError("Monte Carlo configuration (monte_carlo.yaml) is missing or empty.")
-        
+
     scenario_id = str(os.environ.get("ANTARES_MC_SCENARIO", NOMINAL)).lower()
     if scenario_id not in SCENARIOS:
         raise ConfigurationError(f"Unsupported stochastic scenario: {scenario_id}")
@@ -161,11 +163,11 @@ def execute_monte_carlo(config, project_dir):
         # A single worker is a useful explicit serial benchmark and is not a
         # valid value for RocketPy's parallel backend.
         parallel = False
-    
+
     # Force seed reproducibility
     np.random.seed(seed)
     random.seed(seed)
-    
+
     # 5. Output directory structure (supports campaign mode)
     campaign_dir_env = os.environ.get("ANTARES_CAMPAIGN_DIR")
     is_campaign_active = os.environ.get("ANTARES_CAMPAIGN_ACTIVE") == "1"
@@ -198,7 +200,7 @@ def execute_monte_carlo(config, project_dir):
             campaign_settings["failure_policy"] = mc_cfg.get("failure_policy")
         canonical_campaign = MonteCarloCampaign(
             project=project_dir.name,
-            root=project_dir.parents[1],
+            root=Path(workspace_root) if workspace_root is not None else project_dir.parents[1],
             master_seed=int(seed),
             profile=profile,
             campaign_id=run_id,
@@ -215,16 +217,21 @@ def execute_monte_carlo(config, project_dir):
     # PHASE 1-3: DETERMINISTIC PRE-SAMPLING (No stochastic behavior defined inline)
     # ---------------------------------------------------------------------------------
     registry_path = project_dir / "config" / "uncertainties.yaml"
-    
+
     # If the new schema doesn't exist, generate a bridge schema to ensure Phase 1 test passage
     if not registry_path.exists():
         print("[Monte Carlo] Warning: uncertainties.yaml not found. Using direct legacy logic.")
-    
+
     from antares_fd.builders.environment import build_environment, build_environment_ensemble
     print("[Monte Carlo] Building Nominal Models and Stochastics...")
     nominal_env = build_environment(config.environment, config.launch)
     env_ensemble = build_environment_ensemble(config.environment, config.launch)
-    
+    if archive_atmospheres:
+        from antares_fd.environment.archive import archive_environment
+        archive_environment(nominal_env, results_dir / "atmospheres/nominal")
+        for index, environment in enumerate(env_ensemble):
+            archive_environment(environment, results_dir / "atmospheres" / f"member_{index:04d}")
+
     if canonical_campaign is not None:
         samples_df = canonical_campaign.make_samples(registry_path, canonical_campaign.max_samples, len(env_ensemble))
     elif registry_path.exists():
@@ -236,7 +243,7 @@ def execute_monte_carlo(config, project_dir):
         samples_df = None
         if canonical_campaign is not None:
             samples_df = canonical_campaign.make_samples(None, canonical_campaign.max_samples)
-        
+
     # --- 3. Map Config to RocketPy Stochastics ---
     wind_x_std = 0.0
     wind_y_std = 0.0
@@ -256,7 +263,7 @@ def execute_monte_carlo(config, project_dir):
     env_cfg = mc_cfg.get("environment") or {}
     user_wx_std = (env_cfg.get("wind_velocity_x") or {}).get("factor_std", 0.0)
     user_wy_std = (env_cfg.get("wind_velocity_y") or {}).get("factor_std", 0.0)
-    
+
     # Each case receives one complete MAGI profile.  The environment object is
     # swapped immediately before RocketPy creates the case Flight; the shared
     # stochastic wrapper still supplies the launch-site randomization.
@@ -274,7 +281,7 @@ def execute_monte_carlo(config, project_dir):
     motor = build_motor(config.motor, project_dir)
     mot_cfg = mc_cfg.get("motor") or {}
     imp_std_factor = (mot_cfg.get("total_impulse_scale") or {}).get("std", 0.0)
-    
+
     stoch_motor = StochasticSolidMotor(
         motor,
         total_impulse=(motor.total_impulse, motor.total_impulse * imp_std_factor) if imp_std_factor else None,
@@ -282,7 +289,7 @@ def execute_monte_carlo(config, project_dir):
 
     rocket = build_vehicle(config.vehicle, motor, project_dir)
     add_recovery_system(rocket, config.recovery)
-    
+
     veh_cfg = mc_cfg.get("vehicle") or {}
     mass_std = (veh_cfg.get("mass") or {}).get("std", 0.0)
     drag_off_std = (veh_cfg.get("power_off_drag_factor") or {}).get("std", 0.0)
@@ -298,7 +305,6 @@ def execute_monte_carlo(config, project_dir):
 
     _transfer_rocket_components(rocket, stoch_rocket)
 
-    rail_len = (config.launch.get("rail") or {}).get("length", 5.2)
     inc = (config.launch.get("rail") or {}).get("inclination_deg", 85.0)
     hdg = (config.launch.get("rail") or {}).get("heading_deg", 0.0)
 
@@ -310,9 +316,9 @@ def execute_monte_carlo(config, project_dir):
         inclination=launch_angle_distribution(inc, flt_cfg.get("inclination"), "inclination"),
         heading=launch_angle_distribution(hdg, flt_cfg.get("heading"), "heading"),
     )
-    
+
     filename = str(results_dir / "mc_sim")
-    
+
     mc = ConfiguredMonteCarlo(
         filename=filename,
         environment=stoch_env,
@@ -331,7 +337,7 @@ def execute_monte_carlo(config, project_dir):
         member_indices = pd.to_numeric(ordered_samples["atmosphere_ensemble"], errors="coerce").fillna(0).astype(int).tolist()
         mc._antares_environment_members = env_ensemble
         mc._antares_environment_indices = member_indices
-    
+
     manager = None
     all_flights = None
     if not compact_outputs:
@@ -343,7 +349,7 @@ def execute_monte_carlo(config, project_dir):
             # Serial simulation runs in this process; a socket-backed manager
             # adds IPC and can fail in restricted environments without helping.
             all_flights = TrajectoryStore(seed)
-    
+
     _orig_run_single = mc._MonteCarlo__run_single_simulation
     deterministic_seeds = None
     if canonical_campaign is not None and samples_df is not None and "seed" in samples_df:
@@ -357,6 +363,12 @@ def execute_monte_carlo(config, project_dir):
         # Serial RocketPy execution does not expose a case seed hook. Set it
         # immediately before the original RocketPy simulation. The parallel
         # producer above sets _antares_active_case_seed itself.
+        """Execute um caso e capture métricas e trajetória para a campanha.
+
+        Envolve o executor original, associa o resultado à população amostrada
+        e registra séries compactas para diagnóstico. Retorna Flight; a rotina
+        de campanha mantém restauração do método original e encerramento do manager.
+        """
         if deterministic_seeds is not None and not hasattr(mc, "_antares_active_case_seed"):
             serial_index = min(mc._antares_serial_case, len(deterministic_seeds) - 1)
             case_seed = int(deterministic_seeds[serial_index])
@@ -383,17 +395,17 @@ def execute_monte_carlo(config, project_dir):
         import copy
         import numpy as np
         from rocketpy import Flight
-        
+
         # 2. Extract state at 200m AGL on descent
         z_agl = flt_nom.z[:, 1] - flt_nom.env.elevation
         apogee_idx = np.argmax(z_agl)
-        
+
         idx_200 = None
         for i in range(apogee_idx, len(z_agl)):
             if z_agl[i] < 200:
                 idx_200 = i
                 break
-                
+
         if idx_200 is None:
             try:
                 flt_data = {'x': flt_nom.x[:, 1], 'y': flt_nom.y[:, 1], 'z': flt_nom.z[:, 1]}
@@ -401,13 +413,13 @@ def execute_monte_carlo(config, project_dir):
                     all_flights.append(flt_data)
             except Exception: pass
             return flt_nom
-            
+
         state_at_200 = flt_nom.solution[idx_200]
-        
+
         # 3. Simulate separation: Drop parachutes
         booster = copy.deepcopy(flt_nom.rocket)
         booster.parachutes = []
-        
+
         # 4. Simulate remainder of flight (Free Fall)
         try:
             flt_fail = Flight(
@@ -426,7 +438,7 @@ def execute_monte_carlo(config, project_dir):
                     all_flights.append(flt_data)
             except Exception:
                 pass
-            
+
             try:
                 flt_fail.apogee = flt_nom.apogee
                 flt_fail.apogee_time = flt_nom.apogee_time
@@ -437,7 +449,7 @@ def execute_monte_carlo(config, project_dir):
                 flt_fail.out_of_rail_time = getattr(flt_nom, 'out_of_rail_time', 0.0)
             except Exception:
                 pass
-                
+
             return flt_fail
         except Exception as e:
             print("Failed free fall sim:", e)
@@ -447,7 +459,7 @@ def execute_monte_carlo(config, project_dir):
                     all_flights.append(flt_data)
             except Exception: pass
             return flt_nom
-            
+
     mc._MonteCarlo__run_single_simulation = _patched_run_single
     if deterministic_seeds is not None and parallel:
         mc._MonteCarlo__sim_producer = types.MethodType(_deterministic_sim_producer, mc)
@@ -459,6 +471,11 @@ def execute_monte_carlo(config, project_dir):
         # while its parallel producer passes count - 1 (zero-based). Normalize
         # serial exports here so all persisted campaign IDs share one contract.
         def _serial_inputs(one_based_index):
+            """Serialize entradas de um caso usando o identificador canônico.
+
+            Adapta o índice de contagem do RocketPy para o case_id iniciado em zero
+            e acrescenta os valores declarados e realizados ao registro JSON.
+            """
             monitor_id = normalize_case_id(one_based_index, context="RocketPy serial monitor ID")
             if monitor_id < 1:
                 raise ValueError("RocketPy serial monitor IDs must start at one")
@@ -468,6 +485,11 @@ def execute_monte_carlo(config, project_dir):
             )
 
         def _serial_outputs(flight_result, one_based_index):
+            """Serialize as saídas de um caso com seu identificador canônico.
+
+            Recebe flight_result e o índice de contagem RocketPy, delega a extração
+            de escalares e garante o vínculo com o case_id da população congelada.
+            """
             monitor_id = normalize_case_id(one_based_index, context="RocketPy serial monitor ID")
             if monitor_id < 1:
                 raise ValueError("RocketPy serial monitor IDs must start at one")
@@ -581,7 +603,7 @@ def execute_monte_carlo(config, project_dir):
 
     if deterministic_seeds is not None:
         mc._antares_serial_case = already_done
-            
+
     batch_size = int(mc_cfg.get("batch_size", num_sims))
     if batch_size < 1:
         raise ConfigurationError("monte_carlo.batch_size must be greater than zero")
@@ -604,7 +626,7 @@ def execute_monte_carlo(config, project_dir):
         )
     if deterministic_seeds is not None:
         mc._antares_serial_case = already_done
-    
+
     try:
         if already_done >= simulation_goal:
             print(f"[Monte Carlo] All {simulation_goal} simulations already completed in previous run. Skipping simulation.")
@@ -658,11 +680,11 @@ def execute_monte_carlo(config, project_dir):
         if manager is not None:
             manager.shutdown()
 
-    
+
     try:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(project_dir)).decode().strip()
         dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=str(project_dir)).decode().strip())
-    except:
+    except (OSError, subprocess.CalledProcessError):
         commit = "unknown"
         dirty = False
 
@@ -715,7 +737,7 @@ def execute_monte_carlo(config, project_dir):
             "trajectory_policy": "none_for_compact_campaign" if compact_outputs else "four_endpoint_extrema_plus_five_reservoir_samples",
         },
     }
-    
+
     with open(results_dir / "manifest.yaml", "w") as f:
         yaml.dump(manifest, f, default_flow_style=False)
 
@@ -732,7 +754,7 @@ def execute_monte_carlo(config, project_dir):
             f"Monte Carlo campaign incomplete: {len(mc.outputs_log)}/{simulation_goal} "
             f"simulations exported. Check worker errors and results in {results_dir}."
         )
-        
+
     print(f"[Monte Carlo] Campaign finished. Results saved to: {results_dir}")
 
     if canonical_campaign is not None:
@@ -743,7 +765,7 @@ def execute_monte_carlo(config, project_dir):
             input_records=list(getattr(mc, "inputs_log", [])),
             failure_records=_failure_records(mc, samples_df, simulation_goal),
         )
-    
+
     outputs_file = results_dir / "mc_sim.outputs.txt"
     if outputs_file.exists() and not compact_outputs:
         from antares_fd.simulation.plotters import plot_monte_carlo_dispersion, plot_monte_carlo_distributions, plot_monte_carlo_convergence
@@ -755,7 +777,7 @@ def execute_monte_carlo(config, project_dir):
             if z_agl[i] < 200:
                 idx_200 = i
                 break
-        
+
         flight_fail = None
         if idx_200 is not None:
             state_at_200 = flight.solution[idx_200]
@@ -768,7 +790,7 @@ def execute_monte_carlo(config, project_dir):
                 initial_solution=state_at_200,
                 terminate_on_apogee=False,
             )
-            
+
         plot_monte_carlo_dispersion(outputs_file, results_dir, run_id, nominal_flight=flight, nominal_flight_fail=flight_fail, all_flights=all_flights,
                                    sample_flights=trajectory_snapshot["samples"])
         plot_monte_carlo_distributions(outputs_file, results_dir, run_id)
@@ -785,5 +807,5 @@ def execute_monte_carlo(config, project_dir):
             report.generate(results_dir / "flight_dynamics_report.pdf")
         except Exception as e:
             print(f"[Report] Failed to generate engineering PDF report: {e}")
-        
+
     return mc

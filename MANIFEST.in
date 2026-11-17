@@ -1,0 +1,3 @@
+include requirements.txt
+recursive-include source/antares_fd/reporting/data *.yaml
+recursive-include source/antares_fd/gui/static *.html *.css *.js

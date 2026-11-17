@@ -10,6 +10,11 @@ except ImportError:
 
 class Melchior:
     def __init__(self, cache_dir="dados_cache", elevation_msl=450):
+        """Configure o diretório de climatologia e a elevação local em metros MSL.
+
+        Resolve cache relativo ao módulo e prepara caminhos de leitura;
+        a criação de climatologia sintética não ocorre implicitamente aqui.
+        """
         if not os.path.isabs(cache_dir):
             base_dir = os.path.dirname(os.path.abspath(__file__))
             self.cache_dir = os.path.join(base_dir, cache_dir)
@@ -19,74 +24,19 @@ class Melchior:
         os.makedirs(self.cache_dir, exist_ok=True)
         print(f"MELCHIOR: Inicializando com diretório de cache '{self.cache_dir}' e elevação MSL={self.elevation_msl}m")
 
-    def _generate_synthetic_historical_cache(self, output_path):
-        """Generates a representative multi-profile historical climatological dataset for Iacanga (MSL 450m)."""
-        print(f"MELCHIOR: Gerando climatologia sintética representativa em '{output_path}'...")
-        dates = pd.date_range("2024-01-01 12:00:00", periods=30, freq="7D", tz="UTC")
-        alts_msl = np.arange(450, 7001, 250)  # 450 to 7000 m MSL
-        records = []
-
-        # Physical constants
-        L = 0.0065  # K/m (ISA lapse rate)
-        g = 9.80665
-        R = 287.05
-
-        np.random.seed(42)
-        for i, dt in enumerate(dates):
-            # Day-to-day weather variability
-            is_severe = (i == 14)  # 15th profile represents a severe front/storm event
-            t0 = 23.0 + np.random.normal(0, 4.0) + (5.0 if is_severe else 0.0)
-            p0 = (960.0 + np.random.normal(0, 3.0) - (8.0 if is_severe else 0.0)) * 100.0  # Pa
-            rh0 = 85.0 if is_severe else float(np.clip(60.0 + np.random.normal(0, 12.0), 35.0, 95.0))
-
-            base_dir = float((120.0 + np.random.normal(0, 25.0)) % 360)  # prevailing ESE
-            v_sfc = 12.0 if is_severe else float(np.clip(4.0 + np.random.normal(0, 1.5), 1.5, 9.0))
-            v_jet = 35.0 if is_severe else float(np.clip(18.0 + np.random.normal(0, 4.0), 10.0, 30.0))
-
-            for z_msl in alts_msl:
-                z_agl = z_msl - self.elevation_msl
-                # Temperature (ISA lapse rate with synoptic shift)
-                t_k = (t0 + 273.15) - L * z_agl
-                t_c = t_k - 273.15
-
-                # Pressure (Hypsometric formula)
-                p_pa = p0 * (1.0 - (L * z_agl) / (t0 + 273.15)) ** (g / (R * L))
-                p_hpa = p_pa / 100.0
-
-                # Humidity
-                rh = float(np.clip(rh0 * np.exp(-z_agl / 4000.0) + np.random.normal(0, 2.0), 15.0, 98.0))
-
-                # Wind speed and direction
-                # Surface boundary layer logarithmic + tropospheric increase
-                z_rough = max(z_agl, 10.0)
-                v_bl = v_sfc * (np.log(z_rough / 0.03) / np.log(10.0 / 0.03))
-                v_trop = v_jet * (z_agl / 6550.0) ** 1.2
-                v_spd = float(np.clip(v_bl * 0.4 + v_trop * 0.6 + np.random.normal(0, 0.5), 0.5, 45.0))
-
-                # Wind direction veering/backing with height towards WNW jet
-                dir_deg = float((base_dir + (z_agl / 6550.0) * 140.0 + np.random.normal(0, 5.0)) % 360)
-
-                records.append({
-                    "timestamp": dt.isoformat(),
-                    "altitude_msl": z_msl,
-                    "velocidade": round(v_spd, 2),
-                    "direcao": round(dir_deg, 1),
-                    "temperatura": round(t_c, 2),
-                    "pressao": round(p_hpa, 2),
-                    "umidade": round(rh, 1)
-                })
-
-        df_gen = pd.DataFrame(records)
-        df_gen.to_csv(output_path, index=False)
-        print(f"MELCHIOR: Climatologia sintética salva com {len(df_gen)} registros ({len(dates)} perfis).")
-        return df_gen
 
     def fetch_historical_data(self):
+        """Leia a climatologia disponível com origem e qualidade identificadas.
+
+        Carrega o cache existente, converte unidades explicitamente e deriva
+        vento, umidade, densidade e cisalhamento por perfil. Ausência de cache
+        retorna esquema vazio; não transforma dados sintéticos em observações reais.
+        """
         print("MELCHIOR: Buscando dados históricos do CSV de contingência...")
         legacy_path = os.path.join(self.cache_dir, "historico_openmeteo.csv")
         if not os.path.exists(legacy_path):
-            print("MELCHIOR: Aviso - CSV histórico não encontrado! Gerando contingência climatológica sintética...")
-            self._generate_synthetic_historical_cache(legacy_path)
+            print("MELCHIOR: CSV histórico ausente; climatologia indisponível.")
+            return MagiSchema.create_empty()
 
         old_df = pd.read_csv(legacy_path)
 
@@ -118,13 +68,18 @@ class Melchior:
         df['density_kgm3'] = CasperPhysics.calc_density(df['pressure_pa'], df['temperature_k'], df['relative_humidity_pct'])
 
         df['data_source'] = "legacy_csv_contingency"
-        df['data_type'] = "historical"
-        df['quality_flag'] = "MIGRATED_STAGE2"
+        df['data_type'] = "offline_profile"
+        df['quality_flag'] = "PROVENANCE_UNVERIFIED"
         df['model_name'] = "legacy_csv_model_unverified"
 
         df = df.dropna(subset=['wind_speed_mps', 'temperature_k'])
 
         def calc_shear(group):
+            """Calcule o cisalhamento dentro de um único perfil histórico.
+
+            Ordena o grupo por altitude e aplica gradientes às componentes ENU.
+            Retorna o grupo com a coluna derivada, sem unir datas diferentes.
+            """
             group = group.sort_values('altitude_agl_m').drop_duplicates(subset=['altitude_agl_m'])
             z = group['altitude_agl_m'].values
             if len(z) < 2:
@@ -230,6 +185,11 @@ class Melchior:
         return profiles
 
     def calc_stats_hist(self, df_hist, altitude_grid=None):
+        """Calcule estatísticas históricas sobre uma única grade vertical comum.
+
+        Alinha perfis sem extrapolação e agrega média, desvio e percentis
+        por altitude. Retorna DataFrame de estatísticas; não completa cobertura ausente.
+        """
         if df_hist.empty or altitude_grid is None:
             return pd.DataFrame()
         profiles = self._aligned_profiles(df_hist, altitude_grid)
@@ -290,12 +250,17 @@ class Melchior:
 class MelchiorVisuals:
     @staticmethod
     def plot_magnitude_vento(df_stats):
+        """Desenhe a magnitude histórica do vento por altitude.
+
+        Usa df_stats para representar perfil central e faixa de variabilidade
+        com unidades explícitas; não modifica a climatologia.
+        """
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.plot(df_stats['wind_speed_mps_mean'], df_stats['altitude_agl_m'], label='Historical Mean')
-        ax.fill_betweenx(df_stats['altitude_agl_m'], 
-                         df_stats['wind_speed_mps_p10'], 
-                         df_stats['wind_speed_mps_p90'], 
+        ax.fill_betweenx(df_stats['altitude_agl_m'],
+                         df_stats['wind_speed_mps_p10'],
+                         df_stats['wind_speed_mps_p90'],
                          alpha=0.3, label='10th-90th Percentile')
         ax.set_title("Historical Wind Magnitude")
         ax.legend()

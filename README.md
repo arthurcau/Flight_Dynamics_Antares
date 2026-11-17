@@ -20,6 +20,23 @@
 
 Canonical repository for flight simulation and dynamics at the Antares Rocket Design Team.
 
+**Primeiro acesso?** Leia o [onboarding em português](docs/ONBOARDING.md):
+instalação, mapa dos arquivos, primeiro voo, campanhas, resultados e contribuição.
+
+A versão 0.2 inclui uma **estação gráfica local**. Depois de instalar o ambiente:
+
+```bash
+antares-fd doctor
+antares-fd gui
+```
+
+Na estação, crie projetos, registre componentes, importe OpenRocket com relatório
+de cobertura, valide entradas, execute voos e consulte histórico e resultados.
+Veja [o guia da GUI e da CLI](docs/GUI.md), [a manutenção](docs/MANUTENCAO.md),
+[como contribuir](CONTRIBUTING.md) e [as responsabilidades de continuidade](MAINTAINERS.md).
+O [Neblina 2](projects/neblina_2/README.md) está cadastrado como projeto preliminar,
+aguardando o arquivo OpenRocket e os dados físicos ainda ausentes.
+
 Antares Foguetemodelismo is an extracurricular program at the University of Campinas (Unicamp) dedicated
 to competing in national and international aerospace challenges. Founded in 2014 within the School of Mechanical
 Engineering (FEM), the team initially focused on national competitions. In 2017, the group underwent a strategic
@@ -45,14 +62,18 @@ inputs and outputs, and records the differences found during the repository audi
 
 ## Creating a New Rocket
 
-> 💡 **Novo na equipe?** Veja o [Guia Rápido Passo a Passo (COMO_USAR.md)](docs/COMO_USAR.md).
+> 💡 **Novo na equipe?** Comece pelo [guia de onboarding](docs/ONBOARDING.md)
+> ou consulte o [roteiro rápido](docs/COMO_USAR.md).
 
 Do not copy the simulation engine. To add a new vehicle:
 
-1. Copy the `projects/00_Copy_This/` directory.
-2. Rename it to your vehicle's name (e.g., `projects/My_Rocket/`).
-3. Replace the `null` values in `config/vehicle.yaml`, `recovery.yaml`, and `launch.yaml` with actual engineering data.
-4. Run `simulations/nominal.py` to execute the flight.
+1. Run `antares-fd project new My_Rocket --from 00_Copy_This`, or use the GUI.
+2. Complete its engineering inputs and record their sources; retain unknown values as `null`.
+3. Run `antares-fd validate My_Rocket` and resolve errors.
+4. Run `antares-fd run My_Rocket --scenario nominal`.
+
+The CLI and GUI freeze inputs before integrating. Existing project scripts remain
+available for compatibility; new projects use the shared application services.
 
 ## Engineering Rules
 
@@ -88,4 +109,9 @@ The canonical model relies on both automated testing and engineering review. Do 
 The repository uses `pytest`. Tests verify the shared `antares_fd` package and validate configurations.
 
 ```bash
-PYTHONPATH=source python3 -m pytest tests/
+.venv/bin/python -m pytest tests/ MAGI/tests/
+```
+
+A [referência funcional](docs/referencia_funcoes/README.md) documenta as funções,
+métodos e auxiliares locais do código de execução. O [relatório de revisão](docs/REVISAO_CODIGO_2026-11-16.md)
+registra correções, exclusões, testes e a aplicação das diretrizes NASA/JPL.

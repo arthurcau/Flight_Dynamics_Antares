@@ -1,0 +1,5 @@
+monte_carlo:
+  num_simulations: 2
+  random_seed: 42
+  parallel: false
+  workers: 1

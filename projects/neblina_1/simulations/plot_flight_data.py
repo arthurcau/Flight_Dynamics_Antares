@@ -93,7 +93,6 @@ GROUPS: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
 LINE_LABELS = {
     "bmp1_rel_alt_m": "BMP1",
     "bmp2_rel_alt_m": "BMP2",
-    "gps_alt_m": "GPS altitude",
     "mpu1_ax_g": "ax",
     "mpu1_ay_g": "ay",
     "mpu1_az_g": "az",

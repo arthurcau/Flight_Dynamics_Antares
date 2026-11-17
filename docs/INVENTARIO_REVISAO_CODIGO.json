@@ -1,0 +1,714 @@
+{
+  "modules": 108,
+  "functions": 466,
+  "long_functions": [
+    {
+      "path": "source/antares_fd/analysis/compliance.py",
+      "function": "evaluate_compliance",
+      "line": 27,
+      "lines_without_docstring": 298
+    },
+    {
+      "path": "source/antares_fd/analysis/metrics.py",
+      "function": "extract_flight_metrics",
+      "line": 21,
+      "lines_without_docstring": 331
+    },
+    {
+      "path": "source/antares_fd/analysis/provenance.py",
+      "function": "_config_input_quality",
+      "line": 182,
+      "lines_without_docstring": 99
+    },
+    {
+      "path": "source/antares_fd/analysis/requirements.py",
+      "function": "evaluate",
+      "line": 52,
+      "lines_without_docstring": 85
+    },
+    {
+      "path": "source/antares_fd/analysis/sensitivity.py",
+      "function": "analyze_monte_carlo_sensitivity",
+      "line": 18,
+      "lines_without_docstring": 97
+    },
+    {
+      "path": "source/antares_fd/builders/recovery.py",
+      "function": "add_recovery_system",
+      "line": 54,
+      "lines_without_docstring": 82
+    },
+    {
+      "path": "source/antares_fd/builders/vehicle.py",
+      "function": "build_vehicle",
+      "line": 69,
+      "lines_without_docstring": 175
+    },
+    {
+      "path": "source/antares_fd/cli.py",
+      "function": "main",
+      "line": 58,
+      "lines_without_docstring": 244
+    },
+    {
+      "path": "source/antares_fd/reconstruction/artifacts.py",
+      "function": "process_audit_section",
+      "line": 68,
+      "lines_without_docstring": 85
+    },
+    {
+      "path": "source/antares_fd/reconstruction/observations.py",
+      "function": "build_observed_section",
+      "line": 14,
+      "lines_without_docstring": 205
+    },
+    {
+      "path": "source/antares_fd/reporting/builder.py",
+      "function": "_add_executive_summary",
+      "line": 89,
+      "lines_without_docstring": 61
+    },
+    {
+      "path": "source/antares_fd/reporting/builder.py",
+      "function": "_add_monte_carlo",
+      "line": 336,
+      "lines_without_docstring": 91
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "function": "generate_kinematics_chart",
+      "line": 123,
+      "lines_without_docstring": 68
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "function": "generate_propulsion_and_loads_chart",
+      "line": 199,
+      "lines_without_docstring": 69
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "function": "generate_full_atmosphere_chart",
+      "line": 336,
+      "lines_without_docstring": 80
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "function": "generate_mc_dispersion_chart",
+      "line": 614,
+      "lines_without_docstring": 61
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "function": "generate_mc_distributions_chart",
+      "line": 678,
+      "lines_without_docstring": 66
+    },
+    {
+      "path": "source/antares_fd/reporting/plot_registry.py",
+      "function": "generate_mc_dispersion_chart",
+      "line": 574,
+      "lines_without_docstring": 63
+    },
+    {
+      "path": "source/antares_fd/reporting/plot_registry.py",
+      "function": "generate_mc_distributions_chart",
+      "line": 640,
+      "lines_without_docstring": 66
+    },
+    {
+      "path": "source/antares_fd/reporting/qa.py",
+      "function": "inspect_report",
+      "line": 52,
+      "lines_without_docstring": 64
+    },
+    {
+      "path": "source/antares_fd/reporting/vector_report.py",
+      "function": "_scenario_stochastic_pages",
+      "line": 539,
+      "lines_without_docstring": 97
+    },
+    {
+      "path": "source/antares_fd/simulation/campaign.py",
+      "function": "_run_project_campaign_impl",
+      "line": 96,
+      "lines_without_docstring": 214
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo.py",
+      "function": "execute_monte_carlo",
+      "line": 23,
+      "lines_without_docstring": 232
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "function": "execute_monte_carlo",
+      "line": 128,
+      "lines_without_docstring": 673
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "function": "_patched_run_single",
+      "line": 357,
+      "lines_without_docstring": 94
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "function": "plot_monte_carlo_dispersion",
+      "line": 12,
+      "lines_without_docstring": 522
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "function": "export_nominal_flight_plots",
+      "line": 561,
+      "lines_without_docstring": 210
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "function": "plot_monte_carlo_distributions",
+      "line": 784,
+      "lines_without_docstring": 86
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "function": "plot_monte_carlo_convergence",
+      "line": 873,
+      "lines_without_docstring": 77
+    },
+    {
+      "path": "source/antares_fd/simulation/report.py",
+      "function": "generate_latex_report",
+      "line": 16,
+      "lines_without_docstring": 160
+    },
+    {
+      "path": "source/antares_fd/simulation/results.py",
+      "function": "print_flight_summary",
+      "line": 11,
+      "lines_without_docstring": 135
+    },
+    {
+      "path": "source/antares_fd/simulation/uq_pipeline.py",
+      "function": "_output_frame",
+      "line": 85,
+      "lines_without_docstring": 85
+    },
+    {
+      "path": "source/antares_fd/simulation/uq_pipeline.py",
+      "function": "finalize_campaign_analysis",
+      "line": 259,
+      "lines_without_docstring": 189
+    },
+    {
+      "path": "source/antares_fd/simulation/uq_pipeline.py",
+      "function": "_write_plot_artifacts",
+      "line": 451,
+      "lines_without_docstring": 88
+    },
+    {
+      "path": "source/antares_fd/telemetry/artifacts.py",
+      "function": "_render_report",
+      "line": 201,
+      "lines_without_docstring": 154
+    },
+    {
+      "path": "source/antares_fd/telemetry/artifacts.py",
+      "function": "audit_project",
+      "line": 396,
+      "lines_without_docstring": 191
+    },
+    {
+      "path": "source/antares_fd/telemetry/audit.py",
+      "function": "classify_gps",
+      "line": 151,
+      "lines_without_docstring": 96
+    },
+    {
+      "path": "source/antares_fd/telemetry/audit.py",
+      "function": "audit_dataset",
+      "line": 295,
+      "lines_without_docstring": 391
+    },
+    {
+      "path": "source/antares_fd/telemetry/loader.py",
+      "function": "parse_telemetry_log",
+      "line": 79,
+      "lines_without_docstring": 116
+    },
+    {
+      "path": "source/antares_fd/validation/models.py",
+      "function": "parse_model_variants",
+      "line": 59,
+      "lines_without_docstring": 78
+    },
+    {
+      "path": "source/antares_fd/validation/reference.py",
+      "function": "_archived_environment",
+      "line": 173,
+      "lines_without_docstring": 87
+    },
+    {
+      "path": "source/antares_fd/validation/reference.py",
+      "function": "_compare_reference_timeseries",
+      "line": 353,
+      "lines_without_docstring": 80
+    },
+    {
+      "path": "source/antares_fd/validation/reference.py",
+      "function": "replay_archived_reference",
+      "line": 436,
+      "lines_without_docstring": 113
+    },
+    {
+      "path": "source/antares_fd/validation/residuals.py",
+      "function": "compare_time_series",
+      "line": 85,
+      "lines_without_docstring": 66
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "function": "_profile_from_payload",
+      "line": 162,
+      "lines_without_docstring": 65
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "function": "fetch_operational_forecast",
+      "line": 242,
+      "lines_without_docstring": 97
+    },
+    {
+      "path": "MAGI/casper.py",
+      "function": "interpolate_profile",
+      "line": 183,
+      "lines_without_docstring": 62
+    },
+    {
+      "path": "MAGI/casper.py",
+      "function": "generate_synthetic_ensemble",
+      "line": 268,
+      "lines_without_docstring": 81
+    },
+    {
+      "path": "MAGI/exporter.py",
+      "function": "export_magi_netcdf",
+      "line": 7,
+      "lines_without_docstring": 78
+    },
+    {
+      "path": "MAGI/magi/casper/export/rocketpy.py",
+      "function": "export_rocketpy_ensemble",
+      "line": 109,
+      "lines_without_docstring": 107
+    },
+    {
+      "path": "MAGI/magi/visualization.py",
+      "function": "plot_ensemble_overview",
+      "line": 26,
+      "lines_without_docstring": 105
+    },
+    {
+      "path": "MAGI/melchior.py",
+      "function": "fetch_historical_data",
+      "line": 28,
+      "lines_without_docstring": 62
+    },
+    {
+      "path": "MAGI/scoring.py",
+      "function": "calculate_score",
+      "line": 38,
+      "lines_without_docstring": 132
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "function": "plot_magi_operational_panorama",
+      "line": 219,
+      "lines_without_docstring": 711
+    },
+    {
+      "path": "projects/neblina_1/simulations/plot_flight_data.py",
+      "function": "plot_group",
+      "line": 148,
+      "lines_without_docstring": 69
+    },
+    {
+      "path": "projects/neblina_1/telemetry/compare_flight_to_monte_carlo.py",
+      "function": "_load_primary_trace",
+      "line": 77,
+      "lines_without_docstring": 104
+    },
+    {
+      "path": "projects/neblina_1/telemetry/compare_flight_to_monte_carlo.py",
+      "function": "_mc_apogee",
+      "line": 275,
+      "lines_without_docstring": 74
+    },
+    {
+      "path": "projects/neblina_1/telemetry/compare_flight_to_monte_carlo.py",
+      "function": "_peak_aligned_residuals",
+      "line": 423,
+      "lines_without_docstring": 102
+    },
+    {
+      "path": "projects/neblina_1/telemetry/compare_flight_to_monte_carlo.py",
+      "function": "run",
+      "line": 650,
+      "lines_without_docstring": 197
+    },
+    {
+      "path": "projects/neblina_1/telemetry/compare_flight_to_monte_carlo.py",
+      "function": "_render_report",
+      "line": 855,
+      "lines_without_docstring": 61
+    }
+  ],
+  "broad_exception_handlers": [
+    {
+      "path": "source/antares_fd/analysis/provenance.py",
+      "line": 97
+    },
+    {
+      "path": "source/antares_fd/analysis/provenance.py",
+      "line": 106
+    },
+    {
+      "path": "source/antares_fd/analysis/provenance.py",
+      "line": 110
+    },
+    {
+      "path": "source/antares_fd/cli.py",
+      "line": 278
+    },
+    {
+      "path": "source/antares_fd/reconstruction/artifacts.py",
+      "line": 150
+    },
+    {
+      "path": "source/antares_fd/reporting/builder.py",
+      "line": 450
+    },
+    {
+      "path": "source/antares_fd/reporting/builder.py",
+      "line": 455
+    },
+    {
+      "path": "source/antares_fd/reporting/builder.py",
+      "line": 117
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "line": 366
+    },
+    {
+      "path": "source/antares_fd/reporting/charts.py",
+      "line": 655
+    },
+    {
+      "path": "source/antares_fd/reporting/plot_registry.py",
+      "line": 615
+    },
+    {
+      "path": "source/antares_fd/reporting/tables.py",
+      "line": 253
+    },
+    {
+      "path": "source/antares_fd/simulation/campaign.py",
+      "line": 165
+    },
+    {
+      "path": "source/antares_fd/simulation/campaign.py",
+      "line": 232
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo.py",
+      "line": 198
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo.py",
+      "line": 149
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo.py",
+      "line": 258
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 84
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 449
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 803
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 387
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 409
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 434
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 445
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 455
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 115
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 347
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 447
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 777
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 75
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 90
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 142
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 159
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 228
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 484
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 300
+    },
+    {
+      "path": "source/antares_fd/simulation/plotters.py",
+      "line": 386
+    },
+    {
+      "path": "source/antares_fd/simulation/results.py",
+      "line": 70
+    },
+    {
+      "path": "source/antares_fd/simulation/results.py",
+      "line": 101
+    },
+    {
+      "path": "source/antares_fd/simulation/results.py",
+      "line": 108
+    },
+    {
+      "path": "source/antares_fd/simulation/results.py",
+      "line": 136
+    },
+    {
+      "path": "source/antares_fd/simulation/results.py",
+      "line": 144
+    },
+    {
+      "path": "source/antares_fd/simulation/uq_campaign.py",
+      "line": 295
+    },
+    {
+      "path": "source/antares_fd/storage.py",
+      "line": 93
+    },
+    {
+      "path": "source/antares_fd/storage.py",
+      "line": 110
+    },
+    {
+      "path": "source/antares_fd/telemetry/artifacts.py",
+      "line": 130
+    },
+    {
+      "path": "source/antares_fd/telemetry/artifacts.py",
+      "line": 581
+    },
+    {
+      "path": "source/antares_fd/telemetry/artifacts.py",
+      "line": 381
+    },
+    {
+      "path": "source/antares_fd/telemetry/artifacts.py",
+      "line": 535
+    },
+    {
+      "path": "source/antares_fd/validation/reference.py",
+      "line": 347
+    },
+    {
+      "path": "source/antares_fd/validation/reference.py",
+      "line": 546
+    },
+    {
+      "path": "MAGI/MAGI_App.py",
+      "line": 85
+    },
+    {
+      "path": "MAGI/MAGI_App.py",
+      "line": 166
+    },
+    {
+      "path": "MAGI/MAGI_App.py",
+      "line": 192
+    },
+    {
+      "path": "MAGI/MAGI_App.py",
+      "line": 239
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "line": 333
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "line": 144
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "line": 401
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "line": 387
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "line": 310
+    },
+    {
+      "path": "MAGI/balthasar.py",
+      "line": 152
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 185
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 170
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 285
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 885
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 426
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 794
+    },
+    {
+      "path": "MAGI/visuals.py",
+      "line": 819
+    }
+  ],
+  "direct_recursion_candidates": [
+    {
+      "path": "source/antares_fd/config/loader.py",
+      "function": "_dict_to_config_dict",
+      "line": 28
+    },
+    {
+      "path": "source/antares_fd/reporting/pdf_report.py",
+      "function": "_plain",
+      "line": 137
+    },
+    {
+      "path": "source/antares_fd/reporting/vector_report.py",
+      "function": "_namespace",
+      "line": 37
+    },
+    {
+      "path": "source/antares_fd/storage.py",
+      "function": "_validate_finite_json_values",
+      "line": 15
+    },
+    {
+      "path": "source/antares_fd/validation/reference.py",
+      "function": "_plain",
+      "line": 118
+    },
+    {
+      "path": "scripts/generate_function_reference.py",
+      "function": "function_nodes",
+      "line": 20
+    },
+    {
+      "path": "scripts/generate_function_reference.py",
+      "function": "local_nodes",
+      "line": 36
+    }
+  ],
+  "while_loops": [
+    {
+      "path": "source/antares_fd/analysis/provenance.py",
+      "line": 34,
+      "condition": "(chunk := f.read(65536))"
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 55,
+      "condition": "sim_monitor.keep_simulating()"
+    },
+    {
+      "path": "source/antares_fd/simulation/monte_carlo_failure.py",
+      "line": 630,
+      "condition": "already_done < simulation_goal"
+    },
+    {
+      "path": "source/antares_fd/simulation/uq_campaign.py",
+      "line": 164,
+      "condition": "True"
+    },
+    {
+      "path": "source/antares_fd/telemetry/audit.py",
+      "line": 263,
+      "condition": "start < len(tokens)"
+    },
+    {
+      "path": "source/antares_fd/telemetry/audit.py",
+      "line": 266,
+      "condition": "end < len(tokens) and parsed.records[end]['section_marker'] == marker"
+    },
+    {
+      "path": "MAGI/casper.py",
+      "line": 296,
+      "condition": "len(members) < num_members and attempts < max_attempts"
+    }
+  ]
+}

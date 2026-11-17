@@ -21,3 +21,8 @@ O notebook antigo foi excluído do repositório em 10/09/2026. O
 documenta suas células, os módulos atuais, as diferenças históricas e a validação.
 `build_notebook.py` é um utilitário opcional que recria o notebook; ele não é
 necessário para executar a aplicação Python.
+
+A [referência funcional](../docs/referencia_funcoes/MAGI.md) descreve funções,
+contratos e mecanismos dos módulos. Sem o CSV histórico, MELCHIOR retorna
+climatologia indisponível: não gera dados sintéticos automaticamente. Caches
+antigos recebem `PROVENANCE_UNVERIFIED` e não comprovam origem observacional.

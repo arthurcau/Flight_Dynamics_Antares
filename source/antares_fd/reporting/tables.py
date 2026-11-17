@@ -15,29 +15,27 @@ from antares_fd.analysis.flight_metrics import FlightMetrics
 from antares_fd.analysis.uq import finite_numeric_values, summarize_finite_values
 from antares_fd.storage import read_jsonl_objects
 from .theme import (
-    NAVY_PRIMARY, BLUE_ACCENT, BG_LIGHT, TEXT_DARK,
-    STATUS_PASS, STATUS_WARN, STATUS_FAIL, STATUS_INFO
+    NAVY_PRIMARY, BG_LIGHT, TEXT_DARK
 )
 
 
 def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
     """Generates a color-coded status badge Paragraph."""
     s = str(status).upper().strip()
-    
+
     pass_tags = ["SATISFIED", "PASS", "VALID", "QUALIFIED", "WITHIN GUIDELINE", "WITHIN MODEL RANGE", "COVERED", "COMPLETE"]
     warn_tags = ["MARGINAL", "WARNING", "WARN (DRIFT)", "PARTIAL", "ENGINEERING_ESTIMATE"]
     fail_tags = ["VIOLATED", "FAIL", "CRITICAL FLAG", "CRITICAL FAIL", "OUTSIDE GUIDELINE", "MODEL RANGE EXCEEDED", "NOT COVERED", "FAILED", "LEGACY_ASSUMPTION"]
-    info_tags = ["UNKNOWN", "NOT EVALUATED", "NOT AVAILABLE"]
-    
+
     if s in pass_tags:
-        fg, bg = ("#065F46", "#D1FAE5")
+        fg = "#065F46"
     elif s in warn_tags:
-        fg, bg = ("#92400E", "#FEF3C7")
+        fg = "#92400E"
     elif s in fail_tags:
-        fg, bg = ("#991B1B", "#FEE2E2")
+        fg = "#991B1B"
     else:
-        fg, bg = ("#1E40AF", "#DBEAFE")
-        
+        fg = "#1E40AF"
+
     text = f'<font color="{fg}"><b>{status}</b></font>'
     badge_style = ParagraphStyle(
         name=f"Badge_{status}",
@@ -51,6 +49,11 @@ def _get_badge(status: str, style_base: ParagraphStyle) -> Paragraph:
 
 
 def _cell(value: Any, header: bool = False) -> Any:
+    """Converta um valor em célula ReportLab com quebra de texto.
+
+    Mantém Paragraph existente; nos demais casos, aplica estilo de cabeçalho
+    ou corpo e escapa ampersands. Retorna Paragraph para uso na tabela.
+    """
     if isinstance(value, Paragraph):
         return value
     style = ParagraphStyle(
@@ -65,22 +68,28 @@ def _cell(value: Any, header: bool = False) -> Any:
 
 
 def create_standard_table(data_matrix: List[List[Any]], col_widths: Optional[List[float]] = None, landscape: bool = False) -> Table:
+    """Construa uma tabela paginável com cabeçalho repetido.
+
+    Preenche linhas curtas com células vazias e calcula larguras proporcionais
+    quando col_widths não é informado. landscape seleciona a largura útil.
+    Retorna LongTable estilizada; matriz vazia produz indicação NO DATA.
+    """
     if not data_matrix:
         return Table([["NO DATA"]])
 
     ncols = max(len(row) for row in data_matrix)
     normalized = [list(row) + [""] * (ncols - len(row)) for row in data_matrix]
-    normalized = [[_cell(value, row_index == 0) for value in row] for row_index, row in enumerate(normalized)]
     if col_widths is None:
         from reportlab.lib.units import cm
         available = (24.5 if landscape else 17.0) * cm
         weights = []
         for col in range(ncols):
-            max_len = max(len(str(data_matrix[row][col])) for row in range(len(data_matrix)))
+            max_len = max(len(str(row[col])) for row in normalized)
             weights.append(min(max(max_len, 8), 42))
         total = sum(weights) or 1.0
         col_widths = [available * weight / total for weight in weights]
 
+    normalized = [[_cell(value, row_index == 0) for value in row] for row_index, row in enumerate(normalized)]
     t = LongTable(normalized, colWidths=col_widths, repeatRows=1, splitByRow=1, hAlign="LEFT")
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY_PRIMARY),
@@ -97,37 +106,52 @@ def create_standard_table(data_matrix: List[List[Any]], col_widths: Optional[Lis
     return t
 
 def build_model_validity_envelope_table(validity_data: List[Dict[str, Any]], styles: Any) -> Table:
+    """Formate limites e avaliações de validade física em uma tabela.
+
+    Percorre validity_data, acrescenta domínio, pico, limite, status e nota
+    e aplica indicadores de classificação com os estilos recebidos.
+    """
     table_data = [["Domain & Parameter", "Simulated Peak", "Validity Envelope", "Status", "Note"]]
     style_base = styles["TableCell"]
-    
+
     for check in validity_data:
         domain_param = f"{check.get('domain', '')}: {check.get('parameter', '')}"
         sim = str(check.get('simulated', 'N/A'))
         limit = str(check.get('validity_limit', 'None'))
         status_val = str(check.get('status', 'INFO')).upper()
         note = Paragraph(str(check.get('note', '')), style_base)
-        
+
         status_badge = _get_badge(status_val, style_base)
         table_data.append([domain_param, sim, limit, status_badge, note])
-        
+
     return create_standard_table(table_data)
 
 def build_model_input_quality_table(quality_data: List[Dict[str, Any]], styles: Any) -> Table:
+    """Formate a rastreabilidade dos parâmetros de entrada.
+
+    Transforma quality_data em linhas de parâmetro, origem, classe e confiança.
+    Retorna tabela sem promover estimativas a dados medidos.
+    """
     table_data = [["Parameter", "Source", "Classification", "Confidence"]]
     style_base = styles["TableCell"]
-    
+
     for q in quality_data:
         param = str(q.get('parameter', ''))
         source = str(q.get('source', ''))
         classification = str(q.get('classification', ''))
         confidence_val = str(q.get('confidence', '')).upper()
-        
+
         conf_badge = _get_badge(confidence_val, style_base)
         table_data.append([param, source, classification, conf_badge])
-        
+
     return create_standard_table(table_data)
 
 def build_flight_performance_table(metrics: FlightMetrics) -> Table:
+    """Apresente as métricas escalares de desempenho com unidades.
+
+    Lê o objeto FlightMetrics e cria linhas formatadas para o relatório.
+    Não calcula uma nova trajetória nem altera as métricas.
+    """
     data = [["KPI", "Value"]]
     data.append(["Apogee AGL", f"{metrics.apogee_agl:.1f} m"])
     data.append(["Max Mach", f"{metrics.max_mach:.2f} M"])
@@ -140,6 +164,11 @@ def build_flight_performance_table(metrics: FlightMetrics) -> Table:
     return create_standard_table(data)
 
 def build_stability_table(metrics: FlightMetrics) -> Table:
+    """Apresente margens de estabilidade nos instantes canônicos do voo.
+
+    Lê FlightMetrics, formata os valores e retorna uma tabela ReportLab
+    para comparação com os limites de engenharia.
+    """
     data = [["KPI", "Value"]]
     data.append(["Static Margin (Rail Exit)", f"{metrics.static_margin_rail_exit:.2f} cal"])
     data.append(["Static Margin (Max-Q)", f"{metrics.static_margin_max_q:.2f} cal"])
@@ -148,6 +177,11 @@ def build_stability_table(metrics: FlightMetrics) -> Table:
     return create_standard_table(data)
 
 def build_recovery_table(metrics: FlightMetrics) -> Table:
+    """Apresente eventos e resultados de recuperação disponíveis.
+
+    Percorre as métricas de paraquedas e impacto, preserva campos sem avaliação
+    e retorna uma tabela ReportLab com unidades declaradas.
+    """
     data = [["KPI", "Value"]]
     d_descent = metrics.drogue_descent_rate
     m_descent = metrics.main_descent_rate
@@ -155,7 +189,7 @@ def build_recovery_table(metrics: FlightMetrics) -> Table:
     data.append(["Main Descent Rate", f"{m_descent:.1f} m/s" if m_descent else "N/A"])
     data.append(["Touchdown Velocity", f"{metrics.touchdown_velocity:.1f} m/s"])
     data.append(["Touchdown Energy", f"{metrics.touchdown_energy:.1f} J"])
-    
+
     if metrics.drogue_event or metrics.main_event:
         d_sg = metrics.drogue_event.numerical_transient_shock_g if metrics.drogue_event else 0.0
         m_sg = metrics.main_event.numerical_transient_shock_g if metrics.main_event else 0.0
@@ -165,20 +199,30 @@ def build_recovery_table(metrics: FlightMetrics) -> Table:
     return create_standard_table(data)
 
 def build_completeness_table(completeness: Dict[str, str], styles: Any) -> Table:
+    """Formate o inventário de disponibilidade das métricas.
+
+    Converte o mapeamento completeness em linhas com indicador de status,
+    utilizando styles para a apresentação. Não preenche dados ausentes.
+    """
     data = [["Subsystem", "Status"]]
     for k, v in completeness.items():
         data.append([k, _get_badge(v, styles["TableCell"])])
     return create_standard_table(data)
 
 def build_mc_input_table(project_dir: Path, styles: Any) -> Table:
+    """Apresente as distribuições declaradas no YAML Monte Carlo do projeto.
+
+    Lê project_dir/config/monte_carlo.yaml, percorre os grupos e formata
+    parâmetros e dispersões; falha de leitura produz indicação na tabela.
+    """
     unc_path = project_dir / "config" / "uncertainties.yaml"
     data = [["Parameter", "Distribution", "Uncertainty Limits", "Units", "Status"]]
     style_base = styles["TableCell"]
-    
+
     if not unc_path.exists():
         data.append(["No Config", "-", "-", "-", "UNKNOWN"])
         return create_standard_table(data)
-        
+
     try:
         with open(unc_path, 'r', encoding='utf-8') as f:
             d = yaml.safe_load(f)
@@ -190,7 +234,7 @@ def build_mc_input_table(project_dir: Path, styles: Any) -> Table:
                 units = v.get('units', '-')
                 prov = v.get('provenance', {})
                 status = prov.get('type', 'UNKNOWN').upper()
-                
+
                 limits = "..."
                 if dist == 'normal':
                     limits = f"N({v.get('mean', 1.0)}, {v.get('sigma', 0.1):.3f})"
@@ -198,7 +242,7 @@ def build_mc_input_table(project_dir: Path, styles: Any) -> Table:
                     limits = f"U[{v.get('min', 0.0):.1f}, {v.get('max', 1.0):.1f}]"
                 elif dist == 'categorical':
                     limits = "Ensemble"
-                    
+
                 data.append([
                     k,
                     dist,
@@ -208,25 +252,30 @@ def build_mc_input_table(project_dir: Path, styles: Any) -> Table:
                 ])
     except Exception as e:
          data.append(["Error", "-", str(e), "-", "ERROR"])
-         
+
     return create_standard_table(data)
 
 def build_mc_output_table(outputs_file: Path) -> Table:
+    """Apresente estatísticas finitas das saídas Monte Carlo salvas.
+
+    Lê objetos JSONL por contrato estrito, seleciona métricas numéricas
+    e calcula contagem, média, desvio e percentis. Não executa simulações.
+    """
     data = [["Variable", "N", "Mean", "Std", "P05", "P50", "P95"]]
-    
+
     if not outputs_file.exists():
         data.append(["File Missing", "-", "-", "-", "-", "-", "-"])
         return create_standard_table(data)
-        
+
     if outputs_file.suffix.lower() == ".parquet":
         records = pd.read_parquet(outputs_file).to_dict("records")
     else:
         records = read_jsonl_objects(outputs_file)
-        
+
     if not records:
         data.append(["No Records", "-", "-", "-", "-", "-", "-"])
         return create_standard_table(data)
-        
+
     metric_definitions = (
         ("Apogee AGL (m)", ("apogee", "apogee_agl"), 1.0),
         ("Rail Exit Vel (m/s)", ("out_of_rail_velocity", "rail_exit_velocity"), 1.0),

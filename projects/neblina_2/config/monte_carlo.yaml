@@ -1,0 +1,98 @@
+monte_carlo:
+  num_simulations: 10
+  profile: development
+  batch_size: 250
+  parallel: true
+  workers: null
+  failure_policy:
+    max_failure_fraction: 0.01
+    max_consecutive_failures: 50
+  convergence:
+    window: 3
+    checkpoints:
+    - 50
+    - 100
+    - 200
+    - 500
+    - 1000
+    - 2000
+    - 5000
+    - 7500
+    - 10000
+    - 12500
+    - 15000
+    - 17500
+    - 20000
+  flight:
+    inclination:
+      distribution: uniform
+      min: 70.0
+      max: 90.0
+    heading:
+      distribution: uniform
+      min: 230.0
+      max: 250.0
+  environment:
+    wind_velocity_x:
+      std: 1.0
+      factor_std: 0.2
+    wind_velocity_y:
+      factor_std: 0.2
+    elevation:
+      std: 5.0
+    latitude:
+      std: 0.0001
+    longitude:
+      std: 0.0001
+  motor:
+    total_impulse_scale:
+      std: 0.05
+    burn_start_time:
+      std: 0.1
+    burn_out_time:
+      std: 0.1
+    dry_mass:
+      std: 0.1
+    dry_inertia_11:
+      std: 0.01
+    dry_inertia_22:
+      std: 0.01
+    dry_inertia_33:
+      std: 0.01
+    dry_inertia_12:
+      std: 0.001
+    dry_inertia_13:
+      std: 0.001
+    dry_inertia_23:
+      std: 0.001
+    nozzle_radius:
+      std: 0.0001
+    grain_density:
+      std: 1.0
+    grain_outer_radius:
+      std: 0.001
+    grain_initial_inner_radius:
+      std: 0.001
+    grain_initial_height:
+      std: 0.005
+    grain_separation:
+      std: 0.001
+    grains_center_of_mass_position:
+      std: 0.01
+    center_of_dry_mass_position:
+      std: 0.01
+    nozzle_position:
+      std: 0.005
+    throat_radius:
+      std: 0.0005
+  vehicle:
+    mass:
+      std: 0.01
+    power_off_drag_factor:
+      std: 0.1
+    power_on_drag_factor:
+      std: 0.1
+    radius:
+      std: 0.0002
+    center_of_mass_without_motor:
+      std: 0.001

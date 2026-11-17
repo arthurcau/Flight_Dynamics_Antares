@@ -5,7 +5,7 @@ Orchestrates synthetic 5D atmospheric ensemble cubes (member, time, pressure_lev
 combining horizontal spatial tiling, isobaric vertical profiles, and EOF stochastic perturbations.
 """
 
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 import datetime
 import numpy as np
 import pandas as pd
@@ -18,6 +18,11 @@ class EnsembleGenerator:
     """
 
     def __init__(self, config: Optional[dict] = None):
+        """Configure dimensões, grade e gerador aleatório do ensemble atmosférico.
+
+        Lê config opcional e os valores padrão do gerador. A semente controla
+        a reprodução das perturbações; os membros só são criados na geração.
+        """
         self.config = config or {}
         self.seed = self.config.get("seed", 42069)
         self.num_members = self.config.get("members", 31)

@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 # Script de configuração do ambiente (Antares Flight Dynamics)
 
 echo "========================================================"
@@ -32,7 +34,16 @@ echo "[2/3] Atualizando o instalador (pip) interno..."
 ./.venv/bin/python -m pip install --upgrade pip > /dev/null 2>&1
 
 echo "[3/3] Instalando bibliotecas obrigatórias (RocketPy, PyYAML, Staticmap)..."
-if ./.venv/bin/pip install -r requirements.txt && ./.venv/bin/pip install -e .; then
+antares_python_tag=$(./.venv/bin/python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')
+antares_lock="requirements-py${antares_python_tag}.lock"
+if [ -f "$antares_lock" ]; then
+    ./.venv/bin/python -m pip install --require-hashes -r "$antares_lock"
+    ./.venv/bin/python -m pip install --no-deps --no-build-isolation -e .
+else
+    echo "Sem lock para este Python; instalação aberta. Consulte docs/MANUTENCAO.md."
+    ./.venv/bin/python -m pip install -r requirements.txt -e '.[dev]'
+fi
+if ./.venv/bin/antares-fd doctor; then
     echo ""
     echo "========================================================"
     echo " TUDO PRONTO! O ambiente foi configurado com sucesso."
@@ -45,7 +56,7 @@ if ./.venv/bin/pip install -r requirements.txt && ./.venv/bin/pip install -e .; 
     echo "  source .venv/bin/activate"
     echo ""
     echo "E então rodar suas simulações normalmente:"
-    echo "  python3 Projects/Neblina/simulations/nominal.py"
+    echo "  .venv/bin/antares-fd gui"
     echo ""
 else
     echo ""

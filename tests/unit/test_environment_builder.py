@@ -1,5 +1,4 @@
 import pytest
-import datetime
 from rocketpy import Environment
 
 from antares_fd.config.models import ConfigDict
@@ -24,13 +23,13 @@ def valid_launch_config():
 
 def test_build_environment_success(valid_launch_config):
     env = build_environment(environment_config=None, launch_config=valid_launch_config)
-    
+
     assert isinstance(env, Environment)
     assert env.latitude == -21.0
     assert env.longitude == -49.0
     assert env.elevation == 500.0
-    
-    # In RocketPy, the set_date might convert to UTC. 
+
+    # In RocketPy, the set_date might convert to UTC.
     # Just verify that the date was successfully applied without crashing.
     assert env.datetime_date is not None
 

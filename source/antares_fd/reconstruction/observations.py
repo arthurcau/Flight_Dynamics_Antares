@@ -162,6 +162,11 @@ def build_observed_section(
             }
 
     def unobservable_event(name: str, channels: list[str], reason: str) -> dict:
+        """Registre um evento que os canais disponíveis não permitem observar.
+
+        Retorna metadados com nome, canais e justificativa, sem estimar instante
+        ou valor físico ausente no registro.
+        """
         return {
             "status": "INSUFFICIENT_OBSERVABILITY",
             "event": name,

@@ -72,6 +72,11 @@ def inspect_report(pdf_path: Path, figures_dir: Path | None = None, render_dir: 
         if item.is_file() and item.resolve() != path.resolve()
     )
     def _portable(item: Path) -> str:
+        """Converta um caminho de artefato em identificação portável para o relatório.
+
+        Prioriza referências relativas ao diretório examinado; usa o nome do arquivo
+        quando a relativização não é possível. Não altera o arquivo.
+        """
         try:
             return item.resolve().relative_to(Path(figures_dir).resolve()).as_posix()
         except (ValueError, TypeError):
@@ -112,11 +117,22 @@ def inspect_report(pdf_path: Path, figures_dir: Path | None = None, render_dir: 
 
 
 def _has_rasterizer() -> bool:
+    """Verifique se há um renderizador PDF disponível para inspeção.
+
+    Consulta ferramentas opcionais instaladas e retorna bool, permitindo
+    registrar a limitação sem simular uma verificação visual.
+    """
     import shutil
     return bool(shutil.which("pdftoppm") or shutil.which("mutool") or shutil.which("gswin64c") or shutil.which("magick"))
 
 
 def assert_report_quality(pdf_path: Path, figures_dir: Path | None = None) -> dict[str, Any]:
+    """Exija aprovação das verificações automáticas do PDF.
+
+    Chama inspect_report e lança AssertionError quando o resultado contém falhas.
+    Lê pdf_path e figures_dir sem recalcular os dados de engenharia.
+    Retorna o diagnóstico completo quando aprovado.
+    """
     result = inspect_report(pdf_path, figures_dir)
     if not result["passed"]:
         raise AssertionError(result)

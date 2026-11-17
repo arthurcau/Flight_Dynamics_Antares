@@ -12,7 +12,7 @@ import json
 import textwrap
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Iterable
+from typing import Any
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 
 from antares_fd.analysis.provenance import collect_reproducibility_data
-from antares_fd.reporting.theme import setup_matplotlib_theme, save_figure
+from antares_fd.reporting.theme import setup_matplotlib_theme
 
 
 NAVY = "#0B2545"
@@ -35,6 +35,11 @@ PALE = "#EEF4F8"
 
 
 def _namespace(value: Any) -> Any:
+    """Converta dicionários de artefatos em namespaces de acesso por atributo.
+
+    Percorre listas e mapeamentos recursivamente; preserva escalares e ausências.
+    Retorna estruturas novas sem reavaliar os valores físicos.
+    """
     if isinstance(value, dict):
         return SimpleNamespace(**{key: _namespace(item) for key, item in value.items()})
     if isinstance(value, list):
@@ -43,6 +48,12 @@ def _namespace(value: Any) -> Any:
 
 
 def _read_json(path: Path, default: Any = None) -> Any:
+    """Leia um artefato JSON opcional para compor o relatório.
+
+    Retorna default quando o arquivo não pode ser lido ou contém JSON inválido.
+    Esse fallback de apresentação não deve substituir a validação de métricas
+    obrigatórias realizada na entrada do relatório.
+    """
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -50,6 +61,11 @@ def _read_json(path: Path, default: Any = None) -> Any:
 
 
 def _read_table(path: Path) -> pd.DataFrame:
+    """Leia uma tabela Parquet opcional da campanha.
+
+    Retorna DataFrame vazio se o arquivo não existe ou se leitura, formato
+    ou dependência opcional impedem a carga. Não modifica os dados salvos.
+    """
     try:
         return pd.read_parquet(path) if path.exists() else pd.DataFrame()
     except (OSError, ValueError, ImportError):
@@ -57,6 +73,11 @@ def _read_table(path: Path) -> pd.DataFrame:
 
 
 def _fmt(value: Any, digits: int = 2, unit: str = "") -> str:
+    """Formate um escalar com precisão e unidade explícitas.
+
+    Valores ausentes ou não finitos recebem indicação de indisponibilidade;
+    os demais usam digits casas decimais e o sufixo unit.
+    """
     if value is None or (isinstance(value, float) and not np.isfinite(value)):
         return "NOT AVAILABLE"
     if isinstance(value, (float, np.floating, int, np.integer)):
@@ -65,11 +86,21 @@ def _fmt(value: Any, digits: int = 2, unit: str = "") -> str:
 
 
 def _wrap(value: Any, width: int = 28) -> str:
+    """Quebre texto em linhas para caber nos elementos vetoriais.
+
+    Converte value em texto e aplica textwrap com a largura width;
+    retorna uma string, sem alterar o conteúdo de engenharia.
+    """
     return "\n".join(textwrap.wrap(str(value), width=width, break_long_words=True, break_on_hyphens=True))
 
 
 class VectorReportRenderer:
     def __init__(self, metrics: Any, project_dir: Path, output_path: Path, run_id: str = "nominal", campaign_dir: Path | None = None, scenarios: dict[str, Any] | None = None):
+        """Configure o gerador PDF vetorial e suas fontes de evidência.
+
+        Armazena métricas, caminhos, identificação da campanha e cenários;
+        prepara a leitura de artefatos e o contador de páginas. Não simula voos.
+        """
         self.metrics = metrics
         self.project_dir = Path(project_dir)
         self.output_path = Path(output_path)
@@ -82,6 +113,11 @@ class VectorReportRenderer:
         setup_matplotlib_theme()
 
     def _branding_asset(self) -> Path | None:
+        """Localize a marca visual disponível para a capa.
+
+        Procura os caminhos conhecidos do projeto e do pacote, retornando
+        o arquivo existente ou ausência explícita; não baixa imagens.
+        """
         docs = self.project_dir.parents[1] / "docs"
         for name in ("Antares_Logo_black.pdf", "Antares_Logo_black.svg", "Antares_Logo_black.png"):
             candidate = docs / name
@@ -90,6 +126,11 @@ class VectorReportRenderer:
         return None
 
     def _page(self, title: str, section: str = ""):
+        """Crie uma página vetorial com título, seção e identificação.
+
+        Instancia a figura Matplotlib e desenha os elementos fixos. Retorna fig
+        para receber conteúdo antes de ser salva por _finish.
+        """
         fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
         fig.text(0.07, 0.965, "ANTARES ROCKET DESIGN", fontsize=8, color=TEAL, weight="bold")
         fig.text(0.93, 0.965, "FLIGHT DYNAMICS EVIDENCE PACKAGE", fontsize=7, color=MUTED, ha="right")
@@ -102,14 +143,29 @@ class VectorReportRenderer:
         return fig
 
     def _finish(self, pdf: PdfPages, fig):
+        """Grave e encerre uma página do PDF.
+
+        Envia fig a PdfPages, fecha a figura para liberar recursos
+        e atualiza o contador de páginas do renderizador.
+        """
         pdf.savefig(fig, bbox_inches=None)
         plt.close(fig)
         self.pages += 1
 
     def _text(self, fig, x: float, y: float, text: str, size: float = 10, color: str = INK, weight: str = "normal", width: int = 100):
+        """Adicione texto posicionado em coordenadas normalizadas da página.
+
+        Aplica tamanho, cor, peso e quebra por width antes de desenhar em fig.
+        O método modifica somente os elementos gráficos da figura.
+        """
         fig.text(x, y, _wrap(text, width), fontsize=size, color=color, weight=weight, va="top", linespacing=1.35)
 
     def _table(self, fig, rows: list[list[Any]], rect=(0.07, 0.12, 0.86, 0.70), fontsize=7.4, widths=None):
+        """Desenhe uma tabela vetorial dentro do retângulo solicitado.
+
+        Formata rows, larguras e tipografia sobre eixos ocultos da figura;
+        permite ajustar fonte e proporção sem rasterizar células.
+        """
         ax = fig.add_axes(rect)
         ax.axis("off")
         values = [[_wrap(v, 24 if widths is None else max(12, int(30 * widths[col]))) for col, v in enumerate(row)] for row in rows]
@@ -126,6 +182,11 @@ class VectorReportRenderer:
         return table
 
     def _cover(self, pdf):
+        """Produza a capa com identificação do voo e da campanha.
+
+        Cria página, inclui marca disponível e textos de controle e chama _finish
+        para gravá-la em pdf.
+        """
         fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
         logo = self._branding_asset()
         if logo is not None and logo.suffix.lower() == ".png":
@@ -147,6 +208,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _document_control(self, pdf):
+        """Produza a página de controle e proveniência documental.
+
+        Lê identificadores, revisão e metadados já disponíveis e os organiza
+        em tabelas; não gera evidência física nova.
+        """
         repro = collect_reproducibility_data(self.project_dir)
         git = repro.get("git", {})
         env = repro.get("environment", {})
@@ -169,6 +235,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _toc(self, pdf):
+        """Produza o índice das seções do relatório.
+
+        Lista os blocos previstos para a modalidade de relatório e grava
+        uma página vetorial com a navegação textual.
+        """
         items = ["1 Executive Summary", "2 Completeness & Engineering Warnings", "3 Requirements & Compliance", "4 Model Provenance & Input Quality", "5 Model Validity & Data Coverage", "6 Flight Kinematics", "7 Propulsion", "8 Max-Q & Aerodynamic Loads", "9 Stability", "10 MAGI Atmospheric Environment", "11 Recovery", "12 Failure Scenarios", "13 Monte Carlo Campaign", "14 Statistical Verification", "15 Validation", "Appendix A Complete Metrics", "Appendix B Data Dictionary"]
         fig = self._page("Table of Contents")
         self._text(fig, 0.10, 0.84, "Contents are generated from the same build that creates the PDF. Page numbers are intentionally omitted from this lightweight vector backend; PDF page order is deterministic.", 9, color=MUTED)
@@ -180,6 +251,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _executive(self, pdf):
+        """Produza o resumo executivo das métricas e da campanha.
+
+        Reúne indicadores escalares e disponibilidade das evidências, formata
+        tabelas de leitura rápida e grava a página em pdf.
+        """
         m = self.metrics
         rows = [["FLIGHT", "Value", "STABILITY", "Value"],
                 ["Apogee AGL", _fmt(getattr(m, "apogee_agl", None), 1, "m"), "SM rail exit", _fmt(getattr(m, "static_margin_rail_exit", None), 2, "cal")],
@@ -199,6 +275,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _mc_summary(self):
+        """Obtenha o resumo canônico salvo da campanha Monte Carlo.
+
+        Lê os caminhos suportados de summary.json e retorna o documento
+        ou estrutura vazia quando não houver campanha disponível.
+        """
         if not self.campaign_dir:
             return {}
         summary = _read_json(self.campaign_dir / "summary.json", _read_json(self.campaign_dir / "monte_carlo_summary.json", {})) or {}
@@ -208,18 +289,33 @@ class VectorReportRenderer:
         return _read_json(primary / "summary.json", _read_json(primary / "monte_carlo_summary.json", {})) or {}
 
     def _scenario_dir(self, scenario_id: str) -> Path:
+        """Resolva o diretório de artefatos de um cenário estocástico.
+
+        Considera os layouts de campanha aceitos e retorna Path ou None
+        quando o cenário solicitado não tiver resultados salvos.
+        """
         if not self.campaign_dir:
             return Path()
         candidate = self.campaign_dir / "scenarios" / scenario_id
         return candidate if candidate.exists() else self.campaign_dir
 
     def _scenario_dirs(self) -> dict[str, Path]:
+        """Liste os cenários estocásticos com artefatos disponíveis.
+
+        Percorre o layout de campaign_dir e retorna um mapeamento entre
+        identificador de cenário e diretório, sem executar novos casos.
+        """
         if not self.campaign_dir:
             return {}
         root = self.campaign_dir / "scenarios"
         return {path.name: path for path in sorted(root.iterdir()) if path.is_dir()} if root.exists() else {}
 
     def _mc_value(self, metric: str, stat: str) -> str:
+        """Consulte uma estatística escalar de uma métrica Monte Carlo.
+
+        Seleciona metric e stat na tabela de estatísticas armazenada;
+        retorna ausência quando não há linha ou coluna correspondente.
+        """
         if metric == "_count":
             s = self._mc_summary()
             return str(s.get("successful", s.get("completed", "NOT AVAILABLE")))
@@ -230,6 +326,11 @@ class VectorReportRenderer:
         return _fmt(row.iloc[0].get(stat), 1, "m") if not row.empty else "NOT AVAILABLE"
 
     def _mc_ellipse(self, key: str) -> str:
+        """Consulte um parâmetro da dispersão de pouso salva.
+
+        Lê key na estrutura de elipses da campanha. O retorno conserva
+        a indisponibilidade quando não há amostras suficientes.
+        """
         landing = self._mc_summary().get("landing", {})
         if not landing and self.campaign_dir:
             landing = _read_json(self._scenario_dir("nominal") / "summary.json", {}).get("landing", {})
@@ -237,11 +338,21 @@ class VectorReportRenderer:
         return _fmt(ellipse.get("major_axis"), 0, "m") if ellipse else "NOT AVAILABLE"
 
     def _interpretation(self) -> str:
+        """Construa a interpretação textual a partir das evidências disponíveis.
+
+        Relaciona métricas, limites e incertezas registrados, distinguindo
+        resultados simulados de validação experimental.
+        """
         m = self.metrics
         return (f"Engineering Interpretation: maximum dynamic pressure is {_fmt(getattr(m, 'max_dynamic_pressure', 0) / 1000.0, 1, 'kPa')} at t = {_fmt(getattr(m, 'max_q_time', 0), 2, 's')} and {_fmt(getattr(m, 'max_q_altitude', 0), 1, 'm')} AGL. "
                 f"The reported AoA at Max-Q is {_fmt(getattr(m, 'angle_of_attack_at_max_q', 0), 2, 'deg')}; the valid-window maximum is {_fmt(getattr(m, 'max_angle_of_attack', 0), 1, 'deg')}. Q-alpha is a load indicator and is not a structural bending moment.")
 
     def _warnings(self, pdf):
+        """Produza a página de limitações e condições de interpretação.
+
+        Reúne avisos de modelo, dados ausentes e semântica das análises
+        e grava os textos em pdf.
+        """
         warnings = list(self._mc_summary().get("warnings", []))
         if getattr(self.metrics, "main_event", None) and getattr(self.metrics.main_event, "numerical_transient_shock_g", 0) > 1:
             warnings.append("RECOVERY OPENING SHOCK NOT PHYSICALLY RESOLVED BY CURRENT MODEL")
@@ -258,6 +369,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _requirements(self, pdf):
+        """Produza a página de conformidade com os requisitos declarados.
+
+        Converte _compliance_rows em tabela vetorial e inclui o contexto
+        dos critérios usados, sem alterar limites para aprovar resultados.
+        """
         rows = [["ID", "Type", "Description", "Metric", "Limit", "Nominal", "Margin", "Status"]]
         # RequirementDB is deliberately not called here: artifact rendering
         # must consume the already evaluated compliance table only.
@@ -270,12 +386,22 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _compliance_rows(self):
+        """Monte linhas de conformidade a partir das avaliações disponíveis.
+
+        Seleciona requisito, valor, limite e status preservando desconhecidos.
+        Retorna linhas para apresentação, sem nova integração física.
+        """
         if not self.campaign_dir:
             return []
         frame = _read_table(self._scenario_dir("nominal") / "compliance.parquet")
         return frame.to_dict("records") if not frame.empty else []
 
     def _provenance(self, pdf):
+        """Produza a página de proveniência dos parâmetros de entrada.
+
+        Apresenta fonte, classificação, confiança e semântica disponíveis
+        no inventário canônico; grava a página em pdf.
+        """
         repro = collect_reproducibility_data(self.project_dir)
         rows = [["Parameter", "Source", "Classification", "Confidence / semantics"]]
         for item in repro.get("input_quality", []):
@@ -289,6 +415,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _validity(self, pdf):
+        """Produza a página de domínio de validade do modelo.
+
+        Relaciona métricas simuladas aos envelopes declarados e mantém
+        visíveis os limites ausentes ou ultrapassados.
+        """
         m = self.metrics
         window = getattr(m, "aero_analysis_window", {}) or {}
         window_text = (
@@ -304,6 +435,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _flight_pages(self, pdf):
+        """Produza páginas de cinemática, propulsão, estabilidade e recuperação.
+
+        Usa séries temporais e eventos já extraídos para desenhar os gráficos
+        vetoriais. Não acessa um integrador nem reconstitui parâmetros ausentes.
+        """
         ts = getattr(self.metrics, "timeseries", None)
         if ts is None:
             return
@@ -352,6 +488,11 @@ class VectorReportRenderer:
         self._table(fig, rows, rect=(0.10, 0.15, 0.80, 0.26), fontsize=8, widths=[0.55, 0.45]); self._finish(pdf, fig)
 
     def _scenarios(self, pdf):
+        """Produza a comparação dos cenários determinísticos disponíveis.
+
+        Percorre as métricas por cenário, apresenta diferenças de desempenho
+        e grava os gráficos e tabelas no PDF.
+        """
         if not self.scenarios:
             return
         rows = [["Scenario", "Apogee AGL (m)", "Max Mach", "Max-Q (kPa)", "Flight time (s)", "Landing (m)", "Touchdown (m/s)"]]
@@ -361,6 +502,11 @@ class VectorReportRenderer:
         self._table(fig, rows, rect=(0.04, 0.44, 0.92, 0.38), fontsize=6.5, widths=[0.22, .13, .10, .13, .13, .14, .15]); self._text(fig, .07, .35, "Scenario ascent quantities must be identical through the failure event when the physical vehicle, motor and environment are shared. Any earlier divergence is flagged as a configuration consistency issue.", 9); self._finish(pdf, fig)
 
     def _mc_pages(self, pdf):
+        """Produza as páginas de incerteza da campanha Monte Carlo salva.
+
+        Lê estatísticas, amostras e saídas para apresentar distribuições,
+        dispersão, convergência e sensibilidade. Não cria novos casos.
+        """
         if not self.campaign_dir:
             return
         scenario_dirs = self._scenario_dirs()
@@ -393,7 +539,6 @@ class VectorReportRenderer:
     def _scenario_stochastic_pages(self, pdf, scenario_dirs: dict[str, Path]):
         """Render multi-scenario stochastic evidence from saved tables only."""
         summaries = {sid: _read_json(path / "summary.json", {}) or {} for sid, path in scenario_dirs.items()}
-        stats = {sid: _read_table(path / "statistics.parquet") for sid, path in scenario_dirs.items()}
         rows = [["Scenario", "Requested", "Successful", "Failed", "Failure rate", "Status", "Pairing"]]
         pairing = _read_json(self.campaign_dir / "paired_comparison" / "summary.json", {}) or {}
         pairing_status = pairing.get("status", "NOT AVAILABLE")
@@ -491,6 +636,11 @@ class VectorReportRenderer:
             self._finish(pdf, fig)
 
     def _validation(self, pdf):
+        """Produza a seção de evidência de validação experimental.
+
+        Apresenta os dados e limitações declarados; quando não há medição
+        rastreável, registra indisponibilidade em vez de afirmar validação.
+        """
         fig = self._page("16. Flight Validation")
         validation = getattr(self.metrics, "validation", None)
         if validation:
@@ -501,6 +651,11 @@ class VectorReportRenderer:
         self._finish(pdf, fig)
 
     def _appendices(self, pdf):
+        """Produza os apêndices com metadados e referências dos artefatos.
+
+        Organiza as informações de reprodução disponíveis na campanha
+        e grava as páginas finais em pdf.
+        """
         keys = ["apogee_agl", "apogee_asl", "rail_exit_velocity", "max_velocity", "max_mach", "max_dynamic_pressure", "max_angle_of_attack", "angle_of_attack_at_max_q", "static_margin_rail_exit", "static_margin_max_q", "burnout_mass", "propellant_mass", "total_impulse", "initial_tw", "ignition_tw", "rail_exit_tw", "peak_tw", "average_burn_tw", "flight_duration", "touchdown_velocity", "touchdown_energy", "landing_east", "landing_north", "landing_distance"]
         rows = [["Metric", "Value", "Definition / unit"]]
         for key in keys:
@@ -512,6 +667,12 @@ class VectorReportRenderer:
         self._table(fig, rows, rect=(.07, .20, .86, .62), fontsize=7.5, widths=[.30, .70]); self._finish(pdf, fig)
 
     def render(self) -> Path:
+        """Grave o relatório completo no caminho configurado.
+
+        Abre PdfPages em contexto de fechamento garantido, executa as seções
+        na ordem documental e fecha cada figura após a gravação.
+        O efeito externo é o PDF em output_path; falhas de escrita são propagadas.
+        """
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         metadata = {"Title": "Antares Flight Dynamics Engineering Evidence Package", "Author": "Antares Flight Dynamics", "Subject": self.run_id}
         with PdfPages(self.output_path, metadata=metadata) as pdf:

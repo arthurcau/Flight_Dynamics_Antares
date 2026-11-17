@@ -62,6 +62,11 @@ def sha256_file(path: Path) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
+    """Leia um documento JSON da evidência de comparação.
+
+    Desserializa path em UTF-8 e retorna o objeto. Erros de leitura ou sintaxe
+    são propagados para não aceitar artefatos de entrada inválidos.
+    """
     with path.open(encoding="utf-8") as stream:
         value = json.load(stream)
     if not isinstance(value, dict):
@@ -177,6 +182,11 @@ def _load_primary_trace() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
 
 
 def _gyro_summary(wide: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    """Resuma as velocidades angulares registradas sem inferir orientação.
+
+    Seleciona canais de giroscópio em wide e calcula estatísticas finitas
+    por sensor. A saída é diagnóstico do registro, sem integração em atitude.
+    """
     summary: dict[str, dict[str, Any]] = {}
     for channel in GYRO_CHANNELS:
         values = pd.to_numeric(wide[channel], errors="coerce").dropna()
@@ -221,6 +231,11 @@ def _input_pairing_diagnostics(cases: pd.DataFrame) -> dict[str, dict[str, Any]]
 def _model_snapshot_comparison(
     reference_manifest: dict[str, Any], campaign_manifest: dict[str, Any],
 ) -> dict[str, Any]:
+    """Compare hashes das entradas de referência e da campanha Monte Carlo.
+
+    Percorre os manifestos e identifica correspondências ou divergências
+    para impedir que modelos diferentes sejam tratados como a mesma execução.
+    """
     reference_snapshot = reference_manifest.get("git", {}).get("working_tree_snapshot_sha256")
     campaign_snapshot = campaign_manifest.get("git", {}).get("working_tree_snapshot_sha256")
     if not reference_snapshot or not campaign_snapshot:
@@ -258,6 +273,11 @@ def _verify_reference_artifacts(
 
 
 def _mc_apogee() -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Carregue os casos Monte Carlo e a evidência de apogeu da campanha escolhida.
+
+    Lê os caminhos configurados no script, preserva IDs e metadados
+    e prepara as tabelas usadas na comparação com telemetria.
+    """
     inputs = pd.read_parquet(CAMPAIGN_DIR / "samples/inputs.parquet")
     outputs = pd.read_parquet(CAMPAIGN_DIR / "scenarios/nominal/outputs.parquet")
     if inputs["case_id"].duplicated().any() or outputs["case_id"].duplicated().any():
@@ -334,6 +354,11 @@ def _mc_apogee() -> tuple[pd.DataFrame, dict[str, Any]]:
 
 
 def _weather_plot(profile: pd.DataFrame, provenance: dict[str, Any], output: Path) -> None:
+    """Desenhe o perfil meteorológico candidato e sua proveniência.
+
+    Usa profile e provenance para os eixos e rótulos e grava output.
+    A figura descreve a hipótese atmosférica, sem validá-la como medição do voo.
+    """
     altitude = profile["altitude_asl_m"]
     wind_speed = np.hypot(profile["wind_east_mps"], profile["wind_north_mps"])
     figure, (wind_axis, density_axis) = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
@@ -359,6 +384,11 @@ def _weather_plot(profile: pd.DataFrame, provenance: dict[str, Any], output: Pat
 
 
 def _telemetry_plot(wide: pd.DataFrame, output: Path) -> None:
+    """Desenhe altitudes e velocidades angulares do registro original.
+
+    Usa wide sem unir segmentos de relógio e grava a figura em output.
+    Não modifica o arquivo bruto nem presume calibração dos sensores.
+    """
     figure, axes = plt.subplots(
         7, 1, figsize=(14, 17), sharex=True,
         gridspec_kw={"height_ratios": [1.4, 1, 1, 1, 1, 1, 1]},
@@ -395,6 +425,12 @@ def _peak_aligned_residuals(
     simulated: pd.DataFrame,
     metrics: dict[str, Any],
 ) -> tuple[pd.DataFrame, dict[str, dict[str, Any]]]:
+    """Compare a forma das altitudes após alinhamento declarado pelos picos.
+
+    Usa wide, simulated e metrics para selecionar suporte temporal comum
+    e calcular resíduos. O alinhamento é diagnóstico de forma, não
+    identificação independente de eventos ou validação absoluta de trajetória.
+    """
     peak_time = float(metrics["apogee_time"])
     peak_height = float(metrics["apogee_agl"])
     observed_peak_time = float(wide.loc[wide["bmp2_rel_alt_m"].idxmax(), "block_elapsed_s"])
@@ -500,6 +536,11 @@ def _peak_aligned_plot(
     metrics: dict[str, Any],
     output: Path,
 ) -> None:
+    """Desenhe a comparação de forma com alinhamento pelos picos.
+
+    Recebe resíduos já calculados, série simulada e métricas; grava output
+    com rótulos de referência e domínio da comparação.
+    """
     peak_time = float(metrics["apogee_time"])
     peak_height = float(metrics["apogee_agl"])
     figure, axis = plt.subplots(figsize=(11, 6))
@@ -529,6 +570,11 @@ def _peak_aligned_plot(
 
 
 def _residual_plot(residuals: pd.DataFrame, output: Path) -> None:
+    """Desenhe os resíduos de altitude no suporte temporal válido.
+
+    Usa residuals sem atravessar segmentos de aquisição ou extrapolar
+    a série simulada; salva a figura em output.
+    """
     figure, axis = plt.subplots(figsize=(11, 5))
     valid = residuals.loc[residuals["comparison_status"].eq("PEAK_ALIGNED_WITHIN_MODEL_DOMAIN")]
     for channel, label in (("bmp1_rel_alt_m", "BMP1"), ("bmp2_rel_alt_m", "BMP2")):
@@ -557,6 +603,11 @@ def _mc_plot(
     wide: pd.DataFrame,
     output: Path,
 ) -> None:
+    """Compare a distribuição simulada de apogeu com picos de altitude registrados.
+
+    Usa cases e wide para o histograma e marcadores de observação.
+    Grava output mantendo explícita a diferença entre altura relativa e absoluta.
+    """
     observed_peaks = [float(wide[channel].max()) for channel in ("bmp1_rel_alt_m", "bmp2_rel_alt_m")]
     figure, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
     panels = (
@@ -585,6 +636,11 @@ def _mc_plot(
 
 
 def _package_version(name: str) -> str | None:
+    """Consulte a versão instalada de uma dependência usada na comparação.
+
+    Retorna o texto da versão quando disponível e indicação de ausência
+    quando a distribuição não é encontrada; não instala pacotes.
+    """
     try:
         return version(name)
     except PackageNotFoundError:
@@ -592,6 +648,12 @@ def _package_version(name: str) -> str | None:
 
 
 def run(output_dir: Path) -> Path:
+    """Produza um pacote de diagnóstico entre telemetria e Monte Carlo.
+
+    Verifica entradas e hashes, compara modelos, monta séries e resíduos
+    e grava tabelas, figuras, JSON e relatório em output_dir.
+    Conserva os limites de inferência e não altera a evidência bruta.
+    """
     results_root = (REPO_ROOT / "results").resolve()
     output_dir = output_dir if output_dir.is_absolute() else REPO_ROOT / output_dir
     output_dir = output_dir.resolve()
@@ -791,6 +853,11 @@ def run(output_dir: Path) -> Path:
 
 
 def _render_report(data: dict[str, Any]) -> str:
+    """Converta os resultados canônicos da comparação em relatório Markdown.
+
+    Lê somente data, organiza métricas, proveniência e limitações
+    e retorna texto sem executar novamente a análise física.
+    """
     peaks = data["recorded_altitude_peaks"]
     mc = data["monte_carlo"]
     stats = mc["apogee_agl_m"]
@@ -854,6 +921,11 @@ Reproduce with:
 
 
 def main() -> None:
+    """Execute o diagnóstico de comparação a partir da linha de comando.
+
+    Interpreta o diretório de saída, chama run e informa os produtos gerados.
+    Falhas de integridade ou leitura são propagadas ao processo chamador.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output", type=Path,

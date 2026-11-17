@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Metadados de modelo Antares v1",
+  "type": "object",
+  "required": ["schema_version", "model"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "model": {
+      "type": "object", "required": ["stage"],
+      "properties": {
+        "stage": {"enum": ["DESIGN", "AS_BUILT", "AS_FLOWN"]},
+        "name": {"type": "string"},
+        "notes": {"type": "string"},
+        "pending_import": {"type": "boolean"},
+        "baseline": {"type": "object", "properties": {"project": {"type": "string"}, "revision": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}
+      }
+    }
+  }
+}

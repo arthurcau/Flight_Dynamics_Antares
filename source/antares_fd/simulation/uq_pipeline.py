@@ -33,10 +33,20 @@ from antares_fd.storage import read_jsonl_objects
 
 
 def _read_json_lines(path: Path) -> list[dict[str, Any]]:
+    """Leia registros JSONL usando o contrato estrito do armazenamento comum.
+
+    Retorna lista de objetos; linhas inválidas e números não finitos geram
+    erro com posição, evitando descartar casos silenciosamente.
+    """
     return read_jsonl_objects(path, missing_ok=True)
 
 
 def _sample_case_ids(samples: pd.DataFrame | None) -> set[int] | None:
+    """Extraia e valide os identificadores da população amostrada.
+
+    Exige case_id canônico, inteiro não negativo e sem duplicatas.
+    Retorna o conjunto autorizado para vincular entradas e saídas.
+    """
     if samples is None or "case_id" not in samples:
         return None
     canonical_samples = canonicalize_case_records(
@@ -73,6 +83,13 @@ def _uncertainty_frame(registry_path: Path) -> pd.DataFrame:
 
 
 def _output_frame(records: list[dict[str, Any]], samples: pd.DataFrame | None, scenario_id: str | None = None) -> pd.DataFrame:
+    """Converta registros RocketPy em uma tabela canônica por caso.
+
+    Normaliza IDs e métricas, valida a população permitida e usa elevação
+    realizada por caso para converter apogeu ASL em AGL. Preserva velocidade
+    vertical com sinal e calcula magnitude de impacto separadamente.
+    Retorna DataFrame; duplicatas ou valores físicos inválidos geram erro.
+    """
     if not records:
         return pd.DataFrame()
     allowed_case_ids = _sample_case_ids(samples)
@@ -195,6 +212,11 @@ def _input_frame(samples: pd.DataFrame, records: list[dict[str, Any]] | None) ->
 
 
 def _requirements(project_dir: Path) -> dict[str, dict[str, Any]]:
+    """Carregue os requisitos probabilísticos declarados para a campanha.
+
+    Lê a configuração aplicável e retorna o mapeamento de critérios
+    que será passado à análise de conformidade, sem criar limites novos.
+    """
     path = Path(project_dir) / "config" / "requirements.yaml"
     if not path.exists():
         return {}
@@ -203,6 +225,11 @@ def _requirements(project_dir: Path) -> dict[str, dict[str, Any]]:
 
 
 def _representative_cases(frame: pd.DataFrame) -> pd.DataFrame:
+    """Selecione casos representativos a partir das saídas existentes.
+
+    Usa métricas e percentis para registrar IDs de referência e extremos.
+    Retorna metadados de seleção; não cria trajetórias sintéticas.
+    """
     if frame.empty or "case_id" not in frame:
         return pd.DataFrame()
     selections: list[dict[str, Any]] = []

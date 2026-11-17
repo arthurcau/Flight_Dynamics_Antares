@@ -38,6 +38,11 @@ CAMPAIGN_STATUSES = {
 
 
 def _hash_file(path: Path) -> str:
+    """Calcule SHA-256 de uma entrada para identificar a população da campanha.
+
+    Lê blocos binários e retorna digest hexadecimal, sem incluir caminhos
+    absolutos no conteúdo identificado.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -46,6 +51,11 @@ def _hash_file(path: Path) -> str:
 
 
 def _path_component(value: str, label: str) -> str:
+    """Valide um identificador usado como componente de caminho.
+
+    Rejeita vazio, separadores e referências que escapem do diretório.
+    Retorna texto seguro para organização dos artefatos da campanha.
+    """
     if (
         not isinstance(value, str)
         or not value.strip()
@@ -60,6 +70,11 @@ def _path_component(value: str, label: str) -> str:
 
 
 def _results_root(root: Path) -> Path:
+    """Resolva a raiz autorizada de resultados de um projeto.
+
+    Resolve root/results e rejeita links simbólicos na raiz de resultados.
+    Retorna Path para criação dos diretórios da campanha.
+    """
     repository = Path(root).resolve()
     results = repository / "results"
     if results.is_symlink():
@@ -98,6 +113,11 @@ def campaign_path_for(root: Path, project: str, campaign_id: str) -> Path:
 
 
 def _git_metadata(root: Path) -> dict[str, Any]:
+    """Obtenha revisão Git e estado de trabalho para a proveniência.
+
+    Delega ao coletor compartilhado que registra commit, alterações e snapshot.
+    Retorna metadados sem modificar o repositório.
+    """
     from antares_fd.analysis.provenance import get_git_provenance
 
     provenance = get_git_provenance(Path(root))
@@ -124,6 +144,11 @@ class MonteCarloCampaign:
     scenario_id: str | None = None
 
     def __post_init__(self) -> None:
+        """Prepare a configuração resolvida e os diretórios da campanha Monte Carlo.
+
+        Resolve perfil, limites de amostragem, hashes e estado de retomada;
+        valida consistência antes de criar ou reutilizar os artefatos canônicos.
+        """
         if self.profile not in PROFILES:
             raise ValueError(f"Unknown Monte Carlo profile: {self.profile}")
         settings = {**PROFILES[self.profile], **dict(self.config)}
@@ -170,6 +195,11 @@ class MonteCarloCampaign:
 
     @property
     def is_scenario_campaign(self) -> bool:
+        """Informe se a campanha usa o layout compartilhado por cenários.
+
+        Retorna bool a partir do estado configurado; a propriedade determina
+        como os diretórios e manifestos devem ser organizados.
+        """
         return self.scenario_id is not None
 
     def snapshot_config(self, project_dir: Path) -> dict[str, str]:
@@ -207,14 +237,29 @@ class MonteCarloCampaign:
 
     @property
     def target_samples(self) -> int:
+        """Retorne a meta de casos definida pelo perfil e pelas opções de execução.
+
+        Converte o valor configurado em inteiro; a meta é usada pelo controlador
+        de lotes, sem gerar amostras nesta consulta.
+        """
         return int(self.settings.get("target_samples", self.settings.get("min_samples", 0)))
 
     @property
     def min_samples(self) -> int:
+        """Retorne o mínimo de casos exigido antes da parada por convergência.
+
+        Obtém o valor do perfil configurado e o converte em inteiro.
+        A consulta não avalia a convergência dos resultados.
+        """
         return int(self.settings.get("min_samples", self.target_samples))
 
     @property
     def max_samples(self) -> int:
+        """Retorne o limite superior de casos autorizado para a campanha.
+
+        Obtém o limite do perfil e opções resolvidas; o controlador de lotes
+        usa esse valor para impedir crescimento ilimitado da população.
+        """
         return int(self.settings.get("max_samples", self.target_samples))
 
     def make_samples(self, registry_path: Path | None, count: int | None = None, ensemble_size: int = 0) -> pd.DataFrame:
@@ -233,6 +278,11 @@ class MonteCarloCampaign:
         return samples
 
     def completed_case_ids(self) -> set[int]:
+        """Recupere IDs concluídos nas saídas canônicas já salvas.
+
+        Lê os lotes disponíveis e retorna os identificadores para planejamento
+        de retomada, sem contar arquivos como substitutos de casos.
+        """
         completed: set[int] = set()
         batches_path = _results_artifact_path(self.root, self.batches_path)
         for file in sorted(batches_path.glob("batch_*.parquet")):
@@ -247,12 +297,22 @@ class MonteCarloCampaign:
         return completed
 
     def write_batch(self, batch_number: int, results: pd.DataFrame) -> Path:
+        """Grave um lote canônico de resultados em Parquet.
+
+        Organiza o nome do lote no diretório da campanha e utiliza escrita atômica.
+        O arquivo só substitui o destino depois da gravação completa.
+        """
         path = _results_artifact_path(
             self.root, self.batches_path / f"batch_{int(batch_number):05d}.parquet",
         )
         return write_parquet_atomic(results, path)
 
     def write_manifest(self, status: str, samples: pd.DataFrame | None = None, extra: Mapping[str, Any] | None = None) -> Path:
+        """Publique o manifesto da campanha com o estado de execução atual.
+
+        Reúne configuração resolvida, população, proveniência e detalhes recebidos
+        e escreve JSON de forma atômica para permitir auditoria e retomada.
+        """
         sample_count = int(len(samples)) if samples is not None else self.max_samples
         previous: dict[str, Any] = {}
         manifest_path = _results_artifact_path(self.root, self.path / "manifest.json")
@@ -340,6 +400,11 @@ class StochasticScenarioCampaign:
     scenario_ids: tuple[str, ...] = REQUIRED_SCENARIOS
 
     def __post_init__(self) -> None:
+        """Prepare uma campanha estocástica com uma população comum entre cenários.
+
+        Normaliza os IDs solicitados, rejeita cenários desconhecidos e instancia
+        a campanha base. Não executa trajetórias durante a inicialização.
+        """
         requested = tuple(dict.fromkeys(str(item).lower() for item in self.scenario_ids))
         unknown = [item for item in requested if item not in SCENARIOS]
         if unknown:
@@ -353,28 +418,63 @@ class StochasticScenarioCampaign:
 
     @property
     def path(self) -> Path:
+        """Retorne o diretório raiz da campanha base.
+
+        A propriedade encaminha base.root_path, permitindo que manifestos
+        e comparações pareadas compartilhem a mesma raiz.
+        """
         return self.base.root_path
 
     @property
     def samples_path(self) -> Path:
+        """Retorne o caminho da população compartilhada de amostras.
+
+        Encaminha a referência da campanha pai para que os cenários usem
+        os mesmos case_id e sementes.
+        """
         return self.base.samples_path
 
     @property
     def target_samples(self) -> int:
+        """Consulte a meta de casos da campanha pai.
+
+        Retorna a propriedade correspondente sem manter uma segunda configuração
+        que possa divergir entre cenários.
+        """
         return self.base.target_samples
 
     @property
     def min_samples(self) -> int:
+        """Consulte o mínimo de amostras da campanha pai.
+
+        Retorna o mesmo limite usado por todos os cenários da população pareada;
+        a consulta não altera o estado da campanha.
+        """
         return self.base.min_samples
 
     @property
     def max_samples(self) -> int:
+        """Consulte o teto de amostras da campanha pai.
+
+        Retorna o limite compartilhado que restringe a execução do cenário,
+        sem ampliar automaticamente a população.
+        """
         return self.base.max_samples
 
     def snapshot_config(self, project_dir: Path) -> dict[str, str]:
+        """Encaminhe a criação do snapshot de entradas à campanha pai.
+
+        Evita cópias conflitantes da configuração entre cenários; retorna
+        a referência produzida pelo método compartilhado.
+        """
         return self.base.snapshot_config(project_dir)
 
     def scenario(self, scenario_id: str) -> MonteCarloCampaign:
+        """Crie a visão MonteCarloCampaign de um cenário autorizado.
+
+        Normaliza o nome, exige associação a scenario_ids e instancia a visão
+        com projeto, semente, perfil, configuração e ID de campanha compartilhados.
+        """
         scenario_id = str(scenario_id).lower()
         if scenario_id not in self.scenario_ids:
             raise ValueError(f"Scenario is not part of this campaign: {scenario_id}")
@@ -388,6 +488,11 @@ class StochasticScenarioCampaign:
         return self.base.make_samples(registry_path, self.base.max_samples, ensemble_size)
 
     def write_manifest(self, status: str = "CREATED", **extra: Any) -> Path:
+        """Grave o estado terminal ou intermediário de um cenário.
+
+        Reúne ID, parâmetros compartilhados e detalhes de execução e publica
+        o manifesto no diretório do cenário com escrita atômica.
+        """
         manifest_path = _results_artifact_path(self.root, self.path / "manifest.json")
         if manifest_path.is_symlink():
             raise ValueError(f"Campaign manifest cannot be a symlink: {manifest_path}")
@@ -421,6 +526,11 @@ class StochasticScenarioCampaign:
         return write_json_atomic(payload, manifest_path)
 
     def scenario_manifests(self) -> dict[str, dict[str, Any]]:
+        """Liste os manifestos de cenário disponíveis na campanha pai.
+
+        Delega a consulta compartilhada e retorna os documentos salvos,
+        sem reexecutar os cenários.
+        """
         result: dict[str, dict[str, Any]] = {}
         for scenario_id in self.scenario_ids:
             campaign = self.scenario(scenario_id)

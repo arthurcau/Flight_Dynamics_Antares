@@ -7,14 +7,13 @@ while strictly preserving hydrostatic balance and moist-air buoyancy (virtual te
 
 from typing import Dict, List, Optional, Union
 import numpy as np
-import xarray as xr
 from .eof import apply_eof_perturbation
 
 
 class SyntheticEnsembleGenerator:
     """
     Generates synthetic ensemble members using historical atmospheric error statistics.
-    
+
     Attributes
     ----------
     rng : np.random.Generator
@@ -30,6 +29,11 @@ class SyntheticEnsembleGenerator:
     G0_M_S2 = 9.80665      # Standard acceleration of gravity [m / s^2]
 
     def __init__(self, rng: np.random.Generator, pressure_levels: Union[List[float], np.ndarray]):
+        """Inicialize o gerador com seu fluxo aleatório e níveis de pressão.
+
+        Armazena rng, converte pressure_levels para array numérico e registra
+        o número de níveis. A consistência física é avaliada na geração.
+        """
         self.rng = rng
         self.pressure_levels = np.asarray(pressure_levels, dtype=float)
         self.nz = len(self.pressure_levels)

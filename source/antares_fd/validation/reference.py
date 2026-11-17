@@ -35,6 +35,11 @@ collect_reference_inputs = collect_project_model_inputs
 
 
 def _sha256(path: Path) -> str:
+    """Calcule SHA-256 de uma entrada ou produto de referência.
+
+    Lê blocos binários e retorna digest hexadecimal, sem modificar
+    o arquivo que será comparado ao manifesto.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -60,6 +65,11 @@ def _snapshot_inputs(project_dir: Path, snapshot_dir: Path) -> dict[str, str]:
 
 
 def _timeseries_frame(metrics: Any) -> pd.DataFrame:
+    """Converta séries canônicas de FlightMetrics em uma tabela temporal.
+
+    Organiza tempo e grandezas físicas com nomes de coluna estáveis.
+    Retorna DataFrame para armazenamento da execução de referência.
+    """
     series = metrics.timeseries
     names = {
         "time_s": "time", "altitude_agl_m": "altitude_agl",
@@ -106,6 +116,11 @@ def _atmosphere_frame(flight: Any) -> pd.DataFrame:
 
 
 def _plain(value: Any) -> Any:
+    """Converta métricas estruturadas em dados serializáveis de manifesto.
+
+    Trata dataclasses, arrays e escalares NumPy conforme o contrato interno;
+    retorna a estrutura convertida sem modificar os objetos de origem.
+    """
     if dataclasses.is_dataclass(value):
         return {field.name: _plain(getattr(value, field.name)) for field in dataclasses.fields(value)}
     if isinstance(value, dict):
@@ -126,10 +141,20 @@ def _plain(value: Any) -> Any:
 
 
 def _git_metadata(root: Path) -> dict[str, Any]:
+    """Colete a proveniência Git usando o coletor compartilhado.
+
+    Retorna revisão, estado de alterações e identidade do conteúdo de root.
+    A consulta não modifica arquivos nem o índice Git.
+    """
     return get_git_provenance(root)
 
 
 def _results_output_path(project_dir: Path, output_dir: Path) -> Path:
+    """Valide o diretório de saída de uma referência de modelo.
+
+    Resolve output_dir e exige a organização autorizada em results.
+    Rejeita destinos que possam sobrescrever entradas do projeto.
+    """
     project_root = project_dir.parents[1]
     results_root = project_root / "results"
     if results_root.is_symlink():
@@ -244,6 +269,13 @@ def _execute_reference_products(
     *,
     environment: Any | None = None,
 ) -> tuple[dict[str, Any], Any]:
+    """Execute o modelo de referência com entradas previamente congeladas.
+
+    Constrói os objetos RocketPy a partir do snapshot, integra um voo e grava
+    métricas, séries, perfil atmosférico e manifesto em stage.
+    input_hashes vincula os produtos às entradas; environment permite replay
+    da atmosfera arquivada sem consultar uma nova previsão.
+    """
     config = load_project_config(snapshot)
     if str(config.environment.get("type", "")).lower() != "magi" or config.environment.get("fallback", {}).get("enabled"):
         raise ValueError("Current reference requires configured MAGI with fallback disabled")

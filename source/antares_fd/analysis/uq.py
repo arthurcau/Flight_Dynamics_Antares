@@ -77,6 +77,11 @@ def summarize_finite_values(
 
 
 def _numeric(values: Iterable[Any]) -> np.ndarray:
+    """Extraia os escalares finitos para os cálculos estatísticos internos.
+
+    Delega a finite_numeric_values, preservando a rejeição de dados inválidos
+    e retornando um vetor NumPy, sem substituir ausências por zero.
+    """
     return finite_numeric_values(values, "analysis input")
 
 

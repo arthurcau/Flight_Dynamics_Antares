@@ -1,13 +1,12 @@
-import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict
 import json
-from reportlab.platypus import SimpleDocTemplate, PageBreak, Spacer, Paragraph, Image
+from reportlab.platypus import PageBreak, Spacer, Paragraph, Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 
 from antares_fd.analysis.flight_metrics import FlightMetrics
-from antares_fd.analysis.requirements import RequirementDB, EvaluatedRequirement
+from antares_fd.analysis.requirements import RequirementDB
 from antares_fd.analysis.provenance import collect_reproducibility_data, evaluate_model_validity
 from antares_fd.reporting.theme import setup_report_styles, BaseReportDocTemplate
 from antares_fd.reporting import plot_registry, tables
@@ -16,6 +15,11 @@ from antares_fd.storage import read_jsonl_objects
 
 class ReportContext:
     def __init__(self, project_dir: Path, metrics: FlightMetrics, req_db: RequirementDB):
+        """Prepare o contexto compartilhado do relatório determinístico.
+
+        Armazena diretório, métricas e base de requisitos; calcula avaliações
+        e proveniência que serão consumidas pelas seções, sem reintegrar o voo.
+        """
         self.project_dir = project_dir
         self.metrics = metrics
         self.req_db = req_db
@@ -31,6 +35,11 @@ class ReportContext:
 
 class FlightDynamicsReportBuilder:
     def __init__(self, context: ReportContext):
+        """Inicialize a montagem de elementos ReportLab a partir de context.
+
+        Prepara estilos, diretório de figuras e lista de flowables. Os métodos
+        de seção acrescentam elementos a essa lista antes da escrita do PDF.
+        """
         self.ctx = context
         self.styles = setup_report_styles()
         self.flowables = []
@@ -40,20 +49,20 @@ class FlightDynamicsReportBuilder:
         self._add_cover("Flight Dynamics Evidence Package")
         self._add_executive_summary()
         self._add_provenance_and_validity()
-        
+
         self._add_flight_kinematics()
         self._add_mass_propulsion()
         self._add_aero_loads()
         self._add_stability()
         self._add_atmosphere()
         self._add_recovery()
-        
+
         if self.ctx.scenario_metrics and len(self.ctx.scenario_metrics) > 1:
             self._add_multi_scenario()
-            
+
         if self.ctx.mc_results_dir:
             self._add_monte_carlo()
-        
+
         self._add_reproducibility_appendix()
         doc = BaseReportDocTemplate(
             str(output_pdf),
@@ -66,6 +75,11 @@ class FlightDynamicsReportBuilder:
         doc.build(self.flowables)
 
     def _add_cover(self, title: str):
+        """Acrescente a capa com título e identificação do projeto.
+
+        Cria parágrafos, espaçamento e quebra de página em self.flowables.
+        Não grava o PDF nesta etapa.
+        """
         self.flowables.append(Spacer(1, 4 * cm))
         self.flowables.append(Paragraph(self.ctx.metrics.project_name.replace("_", " ").upper(), self.styles["CoverTitle"]))
         self.flowables.append(Paragraph(title, self.styles["CoverSubtitle"]))
@@ -73,10 +87,14 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(PageBreak())
 
     def _add_executive_summary(self):
+        """Acrescente o resumo de desempenho e conformidade do voo.
+
+        Lê métricas e requisitos do contexto, compõe tabelas e parágrafos
+        e sinaliza resultados críticos sem recalcular a dinâmica.
+        """
         self.flowables.append(Paragraph("1. Executive Summary & Report Status", self.styles["Heading1"]))
-        
-        from reportlab.platypus import KeepTogether
-        
+
+
         # Report Completeness Status
         completeness = {
             "Nominal Simulation": "COMPLETE",
@@ -84,7 +102,7 @@ class FlightDynamicsReportBuilder:
             "Scenario Analysis": "COMPLETE" if self.ctx.scenario_metrics and len(self.ctx.scenario_metrics) > 1 else "NOT AVAILABLE",
             "Validation Data": "COMPLETE" if self.ctx.metrics.validation else "NOT AVAILABLE"
         }
-        
+
         mc_summary_file = None
         if self.ctx.mc_results_dir:
             mc_summary_file = self.ctx.mc_results_dir / "summary.json"
@@ -100,9 +118,9 @@ class FlightDynamicsReportBuilder:
                 mc_status = "FAILED"
         else:
             mc_status = "NOT AVAILABLE"
-            
+
         completeness["Monte Carlo Execution"] = mc_status
-        
+
         self.flowables.append(Paragraph("Evidence Package Generation Status", self.styles["Heading2"]))
         self.flowables.append(tables.build_completeness_table(completeness, self.styles))
         self.flowables.append(Spacer(1, 0.5 * cm))
@@ -115,15 +133,15 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(Paragraph("Flight Performance", self.styles["Heading2"]))
         self.flowables.append(kpi_table_1)
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         self.flowables.append(Paragraph("Stability", self.styles["Heading2"]))
         self.flowables.append(kpi_table_2)
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         self.flowables.append(Paragraph("Recovery", self.styles["Heading2"]))
         self.flowables.append(kpi_table_3)
         self.flowables.append(Spacer(1, 1 * cm))
-        
+
         # Requirements Table
         self.flowables.append(Paragraph("Engineering Requirements Compliance", self.styles["Heading2"]))
         table_data = [["ID", "Description", "Result", "Margin", "Status"]]
@@ -131,11 +149,16 @@ class FlightDynamicsReportBuilder:
             margin_str = f"{req.margin:+.2f} {req.units}" if req.margin is not None else "-"
             val_str = f"{req.value:.2f} {req.units}" if isinstance(req.value, float) else str(req.value)
             table_data.append([req.req_id, req.description, val_str, margin_str, tables._get_badge(req.status, self.styles['TableCell'])])
-        
+
         self.flowables.append(tables.create_standard_table(table_data))
         self.flowables.append(PageBreak())
-        
+
     def _add_provenance_and_validity(self):
+        """Acrescente origem dos dados e limites de validade do modelo.
+
+        Converte as avaliações do contexto em tabelas rastreáveis na sequência
+        de flowables, preservando classificações desconhecidas.
+        """
         self.flowables.append(Paragraph("2. Model Provenance & Input Quality", self.styles["Heading1"]))
         # Model Validity Checks
         self.flowables.append(Paragraph("Physical Domain Validity Envelopes", self.styles["Heading2"]))
@@ -144,7 +167,7 @@ class FlightDynamicsReportBuilder:
             val_data.append([check["domain"] + ": " + check["parameter"], check["simulated"], check["validity_limit"], check["status"], check["note"]])
         self.flowables.append(tables.build_model_validity_envelope_table(self.ctx.validity, self.styles))
         self.flowables.append(Spacer(1, 1 * cm))
-        
+
         # Input Quality Classification
         self.flowables.append(Paragraph("Input Quality Classification", self.styles["Heading2"]))
         qual_data = [["Parameter", "Source", "Classification", "Confidence"]]
@@ -152,14 +175,19 @@ class FlightDynamicsReportBuilder:
             qual_data.append([q["parameter"], q["source"], q["classification"], q["confidence"]])
         self.flowables.append(tables.build_model_input_quality_table(self.ctx.provenance['input_quality'], self.styles))
         self.flowables.append(PageBreak())
-        
+
     def _add_flight_kinematics(self):
+        """Acrescente a seção de trajetória e cinemática.
+
+        Gera a figura a partir de FlightMetrics, referencia o arquivo resultante
+        e adiciona os elementos ao relatório em montagem.
+        """
         self.flowables.append(Paragraph("3. Flight Kinematics & Trajectory", self.styles["Heading1"]))
         fig_path = self.ctx.fig_dir / "kinematics.png"
         plot_registry.generate_kinematics_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
             self.flowables.append(Image(str(fig_path), width=16*cm, height=12*cm))
-            
+
         fig2_path = self.ctx.fig_dir / "views.png"
         plot_registry.generate_trajectory_views_chart(self.ctx.metrics, fig2_path)
         if fig2_path.exists():
@@ -167,8 +195,13 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(PageBreak())
 
     def _add_mass_propulsion(self):
+        """Acrescente diagnóstico de massa, empuxo e propulsão.
+
+        Usa séries e escalares canônicos para tabelas e gráficos, com unidades
+        explícitas; atualiza flowables e arquivos de figuras.
+        """
         self.flowables.append(Paragraph("4. Mass & Propulsion Dynamics", self.styles["Heading1"]))
-        
+
         # Add a compact metric table here! (Phase 7 rule)
         metrics = self.ctx.metrics
         p_data = [["Propulsion KPI", "Value"]]
@@ -181,10 +214,10 @@ class FlightDynamicsReportBuilder:
         p_data.append(["Total Impulse", f"{metrics.total_impulse:.1f} Ns"])
         p_data.append(["Average Thrust", f"{metrics.average_thrust:.1f} N"])
         p_data.append(["Peak Thrust", f"{metrics.max_thrust:.1f} N"])
-        
+
         self.flowables.append(tables.create_standard_table(p_data))
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         fig_path = self.ctx.fig_dir / "propulsion.png"
         plot_registry.generate_mass_and_propulsion_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
@@ -192,8 +225,13 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(PageBreak())
 
     def _add_aero_loads(self):
+        """Acrescente cargas aerodinâmicas e seus limites declarados.
+
+        Lê pressão dinâmica e demais métricas do contexto, gera a visualização
+        e inclui o resultado no relatório, sem alterar o modelo de arrasto.
+        """
         self.flowables.append(Paragraph("5. Aerodynamic Loads (Max Q & Bending)", self.styles["Heading1"]))
-        
+
         # Phase 7 rule: ADD MAX-Q STATE PANEL
         metrics = self.ctx.metrics
         q_data = [["Max-Q State", "Value"]]
@@ -204,17 +242,22 @@ class FlightDynamicsReportBuilder:
         q_data.append(["Velocity", f"{metrics.max_q_mach * 340.0:.1f} m/s"]) # Approximate speed of sound
         q_data.append(["Angle of Attack", f"{metrics.angle_of_attack_at_max_q:.1f} deg"])
         q_data.append(["Static Margin", f"{metrics.static_margin_max_q:.2f} cal"])
-        
+
         self.flowables.append(tables.create_standard_table(q_data))
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         fig_path = self.ctx.fig_dir / "aero_loads.png"
         plot_registry.generate_propulsion_and_loads_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
             self.flowables.append(Image(str(fig_path), width=16*cm, height=10*cm))
         self.flowables.append(PageBreak())
-        
+
     def _add_stability(self):
+        """Acrescente as margens de estabilidade e evolução de CG/CP.
+
+        Produz tabela e gráfico a partir das métricas canônicas e adiciona
+        a interpretação dos limites disponíveis ao relatório.
+        """
         self.flowables.append(Paragraph("6. Stability Evolution", self.styles["Heading1"]))
         # Phase 7 rule: Small marker table
         metrics = self.ctx.metrics
@@ -224,35 +267,50 @@ class FlightDynamicsReportBuilder:
         sm_data.append(["Max-Q", f"{metrics.static_margin_max_q:.2f}"])
         sm_data.append(["Burnout", f"{metrics.static_margin_burnout:.2f}"])
         sm_data.append(["Maximum Margin", f"{metrics.maximum_static_margin:.2f}"])
-        
+
         self.flowables.append(tables.create_standard_table(sm_data))
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         fig_path = self.ctx.fig_dir / "stability.png"
         plot_registry.generate_stability_and_attitude_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
             self.flowables.append(Image(str(fig_path), width=16*cm, height=10*cm))
         self.flowables.append(PageBreak())
-        
+
     def _add_atmosphere(self):
+        """Acrescente o perfil atmosférico utilizado na simulação.
+
+        Gera a figura a partir dos dados armazenados nas métricas e inclui
+        a imagem no relatório; não adquire uma nova previsão.
+        """
         self.flowables.append(Paragraph("7. MAGI Atmospheric Profile", self.styles["Heading1"]))
         fig_path = self.ctx.fig_dir / "atmosphere.png"
         plot_registry.generate_full_atmosphere_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
             self.flowables.append(Image(str(fig_path), width=16*cm, height=13*cm))
         self.flowables.append(PageBreak())
-        
+
     def _add_recovery(self):
+        """Acrescente os resultados de recuperação e descida.
+
+        Apresenta os eventos e velocidades registrados em FlightMetrics;
+        configurações não avaliadas permanecem identificadas como ausentes.
+        """
         self.flowables.append(Paragraph("8. Recovery Profile", self.styles["Heading1"]))
         fig_path = self.ctx.fig_dir / "recovery.png"
         plot_registry.generate_recovery_descent_chart(self.ctx.metrics, fig_path)
         if fig_path.exists():
             self.flowables.append(Image(str(fig_path), width=16*cm, height=9*cm))
         self.flowables.append(PageBreak())
-        
+
     def _add_multi_scenario(self):
+        """Acrescente comparação entre cenários quando houver métricas adicionais.
+
+        Percorre scenario_metrics, monta tabela comparativa e figura; sem cenários
+        adicionais, retorna sem acrescentar uma seção vazia.
+        """
         self.flowables.append(Paragraph("9. Multi-Scenario Comparative Flight", self.styles["Heading1"]))
-        
+
         # Phase 7 rule: Quantitative comparison table
         t_data = [["Scenario", "Apogee (m)", "Flight Time (s)", "Max Mach", "Max-Q (kPa)", "Landing Dist (m)", "Touchdown (m/s)"]]
         for s_name, s_metric in self.ctx.scenario_metrics.items():
@@ -265,10 +323,10 @@ class FlightDynamicsReportBuilder:
                 f"{s_metric.landing_distance:.1f}",
                 f"{s_metric.touchdown_velocity:.1f}"
             ])
-            
+
         self.flowables.append(tables.create_standard_table(t_data))
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         fig_path = self.ctx.fig_dir / "multi_scenario.png"
         plot_registry.generate_multi_scenario_chart(self.ctx.scenario_metrics, fig_path)
         if fig_path.exists():
@@ -276,11 +334,16 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(PageBreak())
 
     def _add_monte_carlo(self):
+        """Acrescente estatísticas e requisitos probabilísticos da campanha salva.
+
+        Lê JSONL, tabelas e figuras em mc_results_dir; compõe distribuições,
+        dispersão e sensibilidade. Não executa novas amostras ou novos voos.
+        """
         self.flowables.append(Paragraph("10. Monte Carlo Stochastic Analysis", self.styles["Heading1"]))
         mc_file = self.ctx.mc_results_dir / "outputs.parquet"
         if not mc_file.exists():
             mc_file = self.ctx.mc_results_dir / "mc_sim.outputs.txt"
-        
+
         mc_summary_file = self.ctx.mc_results_dir / "summary.json"
         if not mc_summary_file.exists():
             mc_summary_file = self.ctx.mc_results_dir / "monte_carlo_summary.json"
@@ -288,7 +351,7 @@ class FlightDynamicsReportBuilder:
         if mc_summary_file.exists():
             with open(mc_summary_file, 'r') as f:
                 mc_data = json.load(f)
-            
+
             s_data = [["Stochastic Run Info", "Value"]]
             s_data.append(["Campaign ID", mc_data.get("campaign_id", "Unknown")])
             s_data.append(["Status", mc_data.get("status", "Unknown").upper()])
@@ -300,12 +363,12 @@ class FlightDynamicsReportBuilder:
             self.flowables.append(tables.create_standard_table(s_data))
             self.flowables.append(Spacer(1, 0.5 * cm))
             has_mc = (mc_data.get("completed", mc_data.get("successful", 0)) > 0)
-            
+
         # Add Input table
         self.flowables.append(Paragraph("Stochastic Inputs / Provenance", self.styles["Heading2"]))
         self.flowables.append(tables.build_mc_input_table(self.ctx.project_dir, self.styles))
         self.flowables.append(Spacer(1, 0.5 * cm))
-        
+
         if not mc_file.exists() or not has_mc:
             self.flowables.append(Paragraph("Monte Carlo execution completed, but canonical output data is missing.", self.styles["TableCell"]))
             return
@@ -314,7 +377,7 @@ class FlightDynamicsReportBuilder:
         self.flowables.append(Paragraph("Output Distributions", self.styles["Heading2"]))
         self.flowables.append(tables.build_mc_output_table(mc_file))
         self.flowables.append(Spacer(1, 1 * cm))
-        
+
         # Phase 12 Add Probabilistic Requirements Table
         self.flowables.append(Paragraph("Stochastic Requirement Confidence Matrix", self.styles["Heading2"]))
         stochastic_evaluator = getattr(self.ctx.req_db, "evaluate_stochastic", None)
@@ -331,7 +394,7 @@ class FlightDynamicsReportBuilder:
                     self.flowables.append(stochastic_table_builder(stoch_reqs, self.styles))
         self.flowables.append(Spacer(1, 1 * cm))
 
-            
+
         fig_disp = self.ctx.mc_results_dir / "plots" / "landing_dispersion.png"
         if not fig_disp.exists():
             fig_disp = self.ctx.fig_dir / "mc_dispersion.png"
@@ -339,7 +402,7 @@ class FlightDynamicsReportBuilder:
         if fig_disp.exists():
             self.flowables.append(Image(str(fig_disp), width=16*cm, height=12*cm))
             self.flowables.append(Spacer(1, 1 * cm))
-            
+
         fig_dist = self.ctx.mc_results_dir / "plots" / "apogee_distribution.png"
         if not fig_dist.exists():
             fig_dist = self.ctx.fig_dir / "mc_distributions.png"
@@ -347,7 +410,7 @@ class FlightDynamicsReportBuilder:
         if fig_dist.exists():
             self.flowables.append(Image(str(fig_dist), width=16*cm, height=11*cm))
             self.flowables.append(PageBreak())
-            
+
         fig_conv = self.ctx.mc_results_dir / "plots" / "convergence_apogee.png"
         if not fig_conv.exists():
             fig_conv = self.ctx.fig_dir / "mc_convergence.png"
@@ -355,7 +418,7 @@ class FlightDynamicsReportBuilder:
         if fig_conv.exists():
             self.flowables.append(Image(str(fig_conv), width=16*cm, height=10*cm))
             self.flowables.append(PageBreak())
-            
+
         # Optional: Sensitivity Tornado
         sens_file = self.ctx.mc_results_dir / "sensitivity_analysis.json"
         if sens_file.exists():
@@ -369,28 +432,33 @@ class FlightDynamicsReportBuilder:
 
 
     def _add_reproducibility_appendix(self):
+        """Acrescente a identificação da revisão usada para construir o relatório.
+
+        Consulta Git e horário UTC, registra diretório do projeto e hashes
+        disponíveis. Falhas de identificação são apresentadas como desconhecidas.
+        """
         self.flowables.append(PageBreak())
         self.flowables.append(Paragraph("Reproducibility Appendix", self.styles["Heading1"]))
-        
+
         import subprocess
         from datetime import datetime
-        
+
         try:
             commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
             dirty = subprocess.check_output(["git", "status", "--porcelain"]).decode("utf-8").strip()
             git_state = commit_hash + (" (DIRTY)" if dirty else " (CLEAN)")
         except Exception:
             git_state = "UNKNOWN (Not a git repository)"
-            
+
         try:
             now_utc = datetime.utcnow().isoformat() + "Z"
         except Exception:
             now_utc = "UNKNOWN"
-            
+
         # Reports must be portable and must not expose a developer's local
         # checkout path.  The canonical project identity is sufficient.
         proj_dir = f"projects/{self.ctx.project_dir.name}"
-        
+
         data = [
             ["Attribute", "Value"],
             ["Execution Timestamp (UTC)", now_utc],
@@ -398,9 +466,9 @@ class FlightDynamicsReportBuilder:
             ["Project Directory", proj_dir],
             ["Antares FD Framework", "Version 2.0 (Hardened)"]
         ]
-        
+
         t = tables.create_standard_table(data)
         self.flowables.append(t)
         self.flowables.append(Spacer(1, 1*cm))
-        
+
         self.flowables.append(Paragraph("This report was automatically synthesized by Antares Flight Dynamics. No manual edits were performed on these charts or metrics. All values are traceable to the defined inputs, meteorological sources, and aerodynamic models.", self.styles["TableCell"]))

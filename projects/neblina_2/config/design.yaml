@@ -1,0 +1,68 @@
+schema_version: 1
+design:
+  status: PRELIMINARY
+  source: Solicitação do usuário nesta sessão
+  baseline:
+    project: neblina_1
+    vehicle_mass_properties:
+      method: measured
+      mass_without_motor: 21.186
+      center_of_mass_without_motor: 1.11547
+      inertia:
+        I11: 7.9042
+        I22: 7.9042
+        I33: 0.075405296
+        I12: 0.0
+        I13: 0.0
+        I23: 0.0
+        reference: center_of_mass_without_motor
+        source: null
+    motor:
+      type: solid
+      thrust_source: motors/Yaripo_teste_est_2_2.eng
+      dry_mass: 8.416
+      dry_inertia:
+      - 0.54060753
+      - 0.54060196
+      - 0.025867792
+      center_of_dry_mass_position: 0.358
+      grains_center_of_mass_position: 0.261
+      grain_number: 4
+      grain_separation: 0.002
+      grain_density: 1815.0
+      grain_outer_radius: 0.058
+      grain_initial_inner_radius: 0.02
+      grain_initial_height: 0.129
+      nozzle_radius: 0.03
+      throat_radius: 0.0103
+      interpolation_method: linear
+      coordinate_system_orientation: combustion_chamber_to_nozzle
+      nozzle_position: 0.7233
+  changes:
+    motor_length_factor: 2.0
+    motor_diameter_factor: 0.7
+    structural_mass_factor: 0.95
+    payload_mass_kg: 4.0
+    swap_slots:
+    - nose_payload
+    - electronics_cage
+  mass_policy:
+    payload: Massa de 4 kg conservada; não recebe desconto estrutural.
+    electronics: Massas semelhantes às do Neblina 1; não recebem desconto da estrutura.
+    structure: Aplicar 0.95 apenas a massas individuais de estruturas, gaiola e ejeção
+      identificadas.
+    motor: Massa seca provisoriamente semelhante; geometria externa não determina
+      empuxo, grãos ou inércia.
+  pending:
+  - Arquivo .ork da montagem de referência
+  - Massas/posições/tensores por componente
+  - Comprimento e diâmetro absolutos do motor de referência
+  - Curva e geometria interna do motor novo
+  - Montagem do motor e integração no veículo
+  - Data e condições de lançamento
+  motor_source_discrepancy:
+    active_eng_header_length_m: 0.52
+    active_eng_header_diameter_m: 0.124
+    yaml_nozzle_position_m: 0.7233
+    notice: Cabeçalho RASP e posição do bocal têm semânticas diferentes; não definir
+      comprimento absoluto sem revisão.

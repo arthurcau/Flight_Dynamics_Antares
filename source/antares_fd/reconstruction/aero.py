@@ -25,6 +25,12 @@ class CurveSpec:
     condition_id: str
 
     def __post_init__(self) -> None:
+        """Valide a identidade e a área de referência de uma curva de Cd.
+
+        Exige nome, proveniência, IDs de geometria e condição, fonte e estado
+        de propulsão suportados e área finita positiva em m². Em falha lança
+        ValueError antes da leitura ou comparação das curvas.
+        """
         if not self.name.strip() or not self.provenance.strip():
             raise ValueError("Cd curve name and provenance are required")
         if self.source not in SOURCES or self.power_state not in POWER_STATES:

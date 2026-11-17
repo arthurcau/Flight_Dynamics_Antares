@@ -1,0 +1,63 @@
+{
+  "contract": "CONTRATO.md",
+  "targetViewports": [
+    "1440x900",
+    "390x844"
+  ],
+  "renderedEvidence": [
+    {
+      "viewport": "1440x900",
+      "artifact": "desktop-neblina-2.png",
+      "observation": "Neblina 2 com inventário parcial e prontidão bloqueada por dados ausentes."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "desktop-resultados.png",
+      "observation": "Resultado calculado, trajetória e estabilidade renderizadas; manifesto verificado pela interface."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "desktop-monte-carlo.png",
+      "observation": "Campanha de um caso de teste: medianas, tabela, nuvem de pouso e ECDF renderizadas com aviso explícito sobre amostra pequena."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "mobile-visao-geral.png",
+      "observation": "Navegação e montagem adaptadas ao telefone; aviso de sessão simulada visível e sem overflow da página."
+    }
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Teclado alcança link de salto, botão tem foco visível, oito Tab não alcançam controles de fundo do diálogo e contraste do botão principal é >=4.5:1; reduced_motion=reduce. O diálogo nativo permite foco no navegador. Inspeção visual complementar das capturas; não equivale a auditoria WCAG completa."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Verificado scrollWidth <= innerWidth em 1440x900 e 390x844."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Worker iniciou e controle de progresso/cancelamento tornou-se disponível."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "Catálogo vazio mostrou orientação para registrar evidências."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "Resposta HTTP 403 controlada apresentou diagnóstico na região de avisos."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Neblina 2 mostrou pendências de inventário sem métricas fabricadas."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Edição preservou histórico, voo concluiu, hashes foram verificados e importação preservou arquivo."
+    },
+    "permission": {
+      "status": "pass",
+      "evidence": "Sessão expirada exercitada por resposta 403 simulada; barreiras reais testadas em test_station_http.py."
+    }
+  }
+}
